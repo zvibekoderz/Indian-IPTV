@@ -15,8 +15,8 @@
     *;
 }
 -keep,includedescriptorclasses class kotlinx.serialization.** { *; }
--keep,includedescriptorclasses class nl.vanvrouwerff.iptv.data.tmdb.** { *; }
--keep,includedescriptorclasses class nl.vanvrouwerff.iptv.data.xtream.** { *; }
+-keep,includedescriptorclasses class com.indian.iptv.data.tmdb.** { *; }
+-keep,includedescriptorclasses class com.indian.iptv.data.xtream.** { *; }
 -dontnote kotlinx.serialization.**
 
 # --- Retrofit ---
@@ -29,8 +29,8 @@
     @retrofit2.http.* <methods>;
 }
 # Retrofit interfaces are accessed by reflection.
--keep interface nl.vanvrouwerff.iptv.data.tmdb.** { *; }
--keep interface nl.vanvrouwerff.iptv.data.xtream.** { *; }
+-keep interface com.indian.iptv.data.tmdb.** { *; }
+-keep interface com.indian.iptv.data.xtream.** { *; }
 -dontwarn retrofit2.**
 -dontwarn org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
 
@@ -72,12 +72,12 @@
 -keep class coil.** { *; }
 
 # --- Project: app entry points referenced from manifest / framework ---
--keep class nl.vanvrouwerff.iptv.IptvApp { *; }
--keep class nl.vanvrouwerff.iptv.MainActivity { *; }
--keep class nl.vanvrouwerff.iptv.player.PlayerActivity { *; }
+-keep class com.indian.iptv.IptvApp { *; }
+-keep class com.indian.iptv.MainActivity { *; }
+-keep class com.indian.iptv.player.PlayerActivity { *; }
 
 # --- Misc: keep BuildConfig (TMDB token field is read by app code) ---
--keep class nl.vanvrouwerff.iptv.BuildConfig { *; }
+-keep class com.indian.iptv.BuildConfig { *; }
 
 # --- Kotlin metadata (needed by serialization & reflection) ---
 -keep class kotlin.Metadata { *; }

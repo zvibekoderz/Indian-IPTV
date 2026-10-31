@@ -17,11 +17,11 @@ val localProps: Properties = Properties().apply {
 val tmdbBearerToken: String = localProps.getProperty("TMDB_BEARER_TOKEN", "")
 
 android {
-    namespace = "nl.vanvrouwerff.iptv"
+    namespace = "com.indian.iptv"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "nl.vanvrouwerff.iptv"
+        applicationId = "com.indian.iptv"
         minSdk = 29
         targetSdk = 34
         versionCode = 1

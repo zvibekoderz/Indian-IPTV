@@ -108,7 +108,7 @@ artwork are hidden.
    ```sh
    adb connect <tv-ip>:5555
    adb install -r app/build/outputs/apk/debug/app-debug.apk
-   adb shell am start -n nl.vanvrouwerff.iptv/.MainActivity
+   adb shell am start -n com.indian.iptv/.MainActivity
    ```
 
 ## First run
@@ -144,7 +144,7 @@ doubles as a small service locator.
 ## Project structure
 
 ```
-app/src/main/java/nl/vanvrouwerff/iptv/
+app/src/main/java/com/indian/iptv/
   IptvApp.kt                    Application class: service locator, Coil
                                 config, refresh scheduler wiring
   MainActivity.kt               Compose root + route host (Splash / Welcome /
