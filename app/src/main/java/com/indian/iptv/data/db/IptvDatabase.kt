@@ -21,7 +21,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         WatchlistEntity::class,
         ReminderEntity::class,
     ],
-    version = 17,
+    version = 18,
     exportSchema = true,
 )
 abstract class IptvDatabase : RoomDatabase() {
@@ -84,6 +84,60 @@ abstract class IptvDatabase : RoomDatabase() {
         private val MIGRATION_16_17 = object : Migration(16, 17) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE profiles ADD COLUMN isKids INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        /** v17 → v18: language, genre, channel number, HD flag for channels.
+         * Also removes legacy userAgent/referrer columns that were in an older schema
+         * but are no longer in the Entity. */
+        private val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // First add new columns
+                db.execSQL("ALTER TABLE channels ADD COLUMN languages TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE channels ADD COLUMN genres TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE channels ADD COLUMN number INTEGER")
+                db.execSQL("ALTER TABLE channels ADD COLUMN isHd INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_channels_number ON channels(number)")
+                // Drop legacy columns (userAgent, referrer) by recreating table — SQLite < 3.35
+                // doesn't support DROP COLUMN, so we copy to new table.
+                db.execSQL("""
+                    CREATE TABLE channels_new (
+                        id TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        logoUrl TEXT,
+                        groupTitle TEXT,
+                        streamUrl TEXT,
+                        epgChannelId TEXT,
+                        sortIndex INTEGER NOT NULL,
+                        type TEXT NOT NULL,
+                        addedAt INTEGER NOT NULL,
+                        archiveDays INTEGER NOT NULL DEFAULT 0,
+                        languages TEXT NOT NULL DEFAULT '',
+                        genres TEXT NOT NULL DEFAULT '',
+                        number INTEGER,
+                        isHd INTEGER NOT NULL DEFAULT 0,
+                        PRIMARY KEY(id)
+                    )
+                """.trimIndent())
+                db.execSQL("""
+                    INSERT INTO channels_new (
+                        id, name, logoUrl, groupTitle, streamUrl, epgChannelId,
+                        sortIndex, type, addedAt, archiveDays,
+                        languages, genres, number, isHd
+                    )
+                    SELECT
+                        id, name, logoUrl, groupTitle, streamUrl, epgChannelId,
+                        sortIndex, type, addedAt, archiveDays,
+                        '', '', NULL, 0
+                    FROM channels
+                """.trimIndent())
+                db.execSQL("DROP TABLE channels")
+                db.execSQL("ALTER TABLE channels_new RENAME TO channels")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_channels_groupTitle ON channels(groupTitle)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_channels_sortIndex ON channels(sortIndex)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_channels_type ON channels(type)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_channels_addedAt ON channels(addedAt)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_channels_number ON channels(number)")
             }
         }
 
@@ -316,6 +370,7 @@ abstract class IptvDatabase : RoomDatabase() {
                         MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8,
                         MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11,
                         MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17,
+                        MIGRATION_17_18,
                     )
                     .addCallback(object : RoomDatabase.Callback() {
                         // Fresh installs skip migrations entirely — Room just builds tables

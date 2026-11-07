@@ -6,7 +6,7 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "channels",
-    indices = [Index("groupTitle"), Index("sortIndex"), Index("type"), Index("addedAt")],
+    indices = [Index("groupTitle"), Index("sortIndex"), Index("type"), Index("addedAt"), Index("number")],
 )
 data class ChannelEntity(
     @PrimaryKey val id: String,
@@ -20,6 +20,14 @@ data class ChannelEntity(
     /** Epoch millis when this row first appeared in the catalogue (preserved across refreshes). */
     val addedAt: Long = 0L,
     @androidx.room.ColumnInfo(defaultValue = "0") val archiveDays: Int = 0,
+    /** Comma-separated ISO 639 language codes (e.g. "hi,en"). */
+    @androidx.room.ColumnInfo(defaultValue = "") val languages: String = "",
+    /** Comma-separated normalised genre tokens (e.g. "News,Entertainment"). */
+    @androidx.room.ColumnInfo(defaultValue = "") val genres: String = "",
+    /** Stable 1-based channel number within the TV playlist order. Null for non-TV. */
+    val number: Int? = null,
+    /** True when the stream or name indicates HD/720p/1080p/4K. */
+    @androidx.room.ColumnInfo(defaultValue = "0") val isHd: Boolean = false,
 )
 
 @Entity(

@@ -124,15 +124,23 @@ data class ChannelsUiState(
     val activeProfileName: String? = null,
     val activeProfileColorArgb: Int? = null,
     val activeProfileEmoji: String? = null,
+    /** Available languages for filtering (TV tab only). */
+    val availableLanguages: List<String> = emptyList(),
+    /** Currently selected language filter (TV tab only). */
+    val selectedLanguage: String? = null,
+    /** Available genres for filtering (TV tab only). */
+    val availableGenres: List<String> = emptyList(),
+    /** Currently selected genre filter (TV tab only). */
+    val selectedGenre: String? = null,
 ) {
     val isSearching: Boolean get() = searchQuery.isNotBlank()
 
     companion object {
-        const val UNCATEGORIZED = "Overig"
-        const val MY_LIST = "Mijn lijst"
-        const val FAVORITES = "Favorieten"
-        const val CONTINUE_WATCHING = "Verder kijken"
-        const val POPULAR_NOW = "Populair nu"
+        const val UNCATEGORIZED = "Other"
+        const val MY_LIST = "My List"
+        const val FAVORITES = "Favorites"
+        const val CONTINUE_WATCHING = "Continue Watching"
+        const val POPULAR_NOW = "Popular Now"
         const val MAX_PER_RAIL = 200
         const val MAX_RAILS = 60
     }
@@ -272,6 +280,19 @@ private object ChannelsDerivations {
             addAll(categoryRails.take(ChannelsUiState.MAX_RAILS - size))
         }.distinctBy { it.title }
     }
+
+    fun filterByLanguageAndGenre(
+        channels: List<Channel>,
+        selectedLanguage: String?,
+        selectedGenre: String?,
+    ): List<Channel> {
+        if (selectedLanguage == null && selectedGenre == null) return channels
+        return channels.filter { ch ->
+            val langMatch = selectedLanguage == null || ch.languages.contains(selectedLanguage)
+            val genreMatch = selectedGenre == null || ch.genres.contains(selectedGenre)
+            langMatch && genreMatch
+        }
+    }
 }
 
 data class RailFocusMemory(
@@ -406,6 +427,20 @@ class ChannelsViewModel : ViewModel() {
         selectedTypeFlow
             .flatMapLatest { type -> categoriesByType.getValue(type) }
             .onEach { cats -> _state.update { it.copy(categories = cats) } }
+            .launchIn(viewModelScope)
+
+        // Compute available languages and genres from channels for TV tab filter chips
+        selectedTypeFlow
+            .flatMapLatest { type -> channelsByType.getValue(type) }
+            .map { channels ->
+                val langs = channels.flatMap { it.languages }.distinct().sorted()
+                val genres = channels.flatMap { it.genres }.distinct().sorted()
+                langs to genres
+            }
+            .flowOn(Dispatchers.Default)
+            .onEach { (langs, genres) ->
+                _state.update { it.copy(availableLanguages = langs, availableGenres = genres) }
+            }
             .launchIn(viewModelScope)
 
         // "Nieuw in je catalogus": observe channels added in the last 14 days. Window is
@@ -583,6 +618,8 @@ class ChannelsViewModel : ViewModel() {
                     popularSeries = s.popularSeries,
                     popularMovies = s.popularMovies,
                     lastWatchedId = s.lastWatchedId,
+                    selectedLanguage = s.selectedLanguage,
+                    selectedGenre = s.selectedGenre,
                 )
             }
             .distinctUntilChanged()
@@ -612,6 +649,11 @@ class ChannelsViewModel : ViewModel() {
                         inputs.popularSeries,
                         inputs.popularMovies,
                     ),
+                    filteredChannels = ChannelsDerivations.filterByLanguageAndGenre(
+                        inputs.channels,
+                        inputs.selectedLanguage,
+                        inputs.selectedGenre,
+                    ),
                 )
             }
             .flowOn(Dispatchers.Default)
@@ -623,6 +665,7 @@ class ChannelsViewModel : ViewModel() {
                         hero = d.hero,
                         heroes = d.heroes,
                         rails = d.rails,
+                        channels = d.filteredChannels,
                     )
                 }
                 // Warm TMDB cache for the hero rail so the trailer-key is ready when the
@@ -660,6 +703,9 @@ class ChannelsViewModel : ViewModel() {
                 managingFavorites = if (type == ContentType.TV) it.managingFavorites else false,
                 searchQuery = "",
                 searchResults = emptyList(),
+                // Clear TV-specific filters when switching away from TV
+                selectedLanguage = if (type == ContentType.TV) it.selectedLanguage else null,
+                selectedGenre = if (type == ContentType.TV) it.selectedGenre else null,
             )
         }
     }
@@ -723,6 +769,20 @@ class ChannelsViewModel : ViewModel() {
             if (isFav) dao.removeFavorite(profileId, channelId)
             else dao.addFavorite(profileId, channelId)
         }
+    }
+
+    fun setSelectedLanguage(language: String?) {
+        if (_state.value.selectedLanguage == language) return
+        _state.update { it.copy(selectedLanguage = language) }
+    }
+
+    fun setSelectedGenre(genre: String?) {
+        if (_state.value.selectedGenre == genre) return
+        _state.update { it.copy(selectedGenre = genre) }
+    }
+
+    fun clearFilters() {
+        _state.update { it.copy(selectedLanguage = null, selectedGenre = null) }
     }
 
     fun refresh() {
@@ -824,6 +884,8 @@ private data class DerivationInputs(
     val popularSeries: List<Channel>,
     val popularMovies: List<Channel>,
     val lastWatchedId: String?,
+    val selectedLanguage: String?,
+    val selectedGenre: String?,
 )
 
 private data class DerivedFields(
@@ -832,6 +894,7 @@ private data class DerivedFields(
     val hero: Channel?,
     val heroes: List<Channel>,
     val rails: List<Rail>,
+    val filteredChannels: List<Channel>,
 )
 
 internal fun normalizeForSearch(text: String): String =

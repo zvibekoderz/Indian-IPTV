@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
@@ -52,6 +53,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -200,6 +202,9 @@ fun ChannelsScreen(
                     onSearchChange = vm::setSearchQuery,
                     onRememberSearch = vm::rememberCurrentSearch,
                     onClearRecents = vm::clearRecentSearches,
+                    onLanguageSelect = vm::setSelectedLanguage,
+                    onGenreSelect = vm::setSelectedGenre,
+                    onClearFilters = vm::clearFilters,
                 )
             }
         }
@@ -248,6 +253,9 @@ private fun NetflixLayout(
     onSearchChange: (String) -> Unit,
     onRememberSearch: () -> Unit,
     onClearRecents: () -> Unit,
+    onLanguageSelect: (String?) -> Unit,
+    onGenreSelect: (String?) -> Unit,
+    onClearFilters: () -> Unit,
 ) {
     // Shared across the whole layout so BACK from anywhere inside the rails can jump
     // straight to the top (and the TopBar's tab pills) without the user having to crawl
@@ -332,8 +340,6 @@ private fun NetflixLayout(
             },
     ) {
         TopBar(
-            selected = state.selectedType,
-            onSelect = onSelectType,
             onOpenSettings = onOpenSettings,
             onOpenProfiles = onOpenProfiles,
             onOpenSearch = { searchVisible = true },
@@ -346,9 +352,21 @@ private fun NetflixLayout(
             activeProfileName = state.activeProfileName,
             activeProfileColorArgb = state.activeProfileColorArgb,
             activeProfileEmoji = state.activeProfileEmoji,
-            selectedTabFocusRequester = tabFocusRequester,
             onFocusChanged = { topBarHasFocus = it },
         )
+
+        // Filter chips for TV type (Language ▸ Genre)
+        if (state.selectedType == ContentType.TV) {
+            FilterChips(
+                languages = state.availableLanguages,
+                selectedLanguage = state.selectedLanguage,
+                onLanguageSelect = onLanguageSelect,
+                genres = state.availableGenres,
+                selectedGenre = state.selectedGenre,
+                onGenreSelect = onGenreSelect,
+                onClearFilters = onClearFilters,
+            )
+        }
 
         Box(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize()) {
@@ -1195,8 +1213,6 @@ internal fun CategoryItem(label: String, selected: Boolean, onClick: () -> Unit)
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun TopBar(
-    selected: ContentType,
-    onSelect: (ContentType) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenProfiles: () -> Unit,
     onOpenSearch: () -> Unit,
@@ -1209,7 +1225,6 @@ private fun TopBar(
     activeProfileName: String?,
     activeProfileColorArgb: Int?,
     activeProfileEmoji: String?,
-    selectedTabFocusRequester: FocusRequester,
     onFocusChanged: (Boolean) -> Unit = {},
 ) {
     Row(
@@ -1227,17 +1242,10 @@ private fun TopBar(
                 letterSpacing = 2.sp,
             ),
         )
-        Spacer(Modifier.width(24.dp))
-        Tabs.forEach { tab ->
-            val isSelected = tab.type == selected
-            TabPill(
-                label = stringResource(tab.labelRes),
-                selected = isSelected,
-                onClick = { onSelect(tab.type) },
-                focusRequester = if (isSelected) selectedTabFocusRequester else null,
-            )
-            Spacer(Modifier.width(8.dp))
-        }
+        Spacer(Modifier.weight(1f))
+        // Focus targets (max 5): Search, Categories, Guide, Profile, Settings
+        SearchChip(onClick = onOpenSearch)
+        Spacer(Modifier.width(12.dp))
         TabPill(
             label = stringResource(R.string.categories_open),
             selected = false,
@@ -1251,15 +1259,6 @@ private fun TopBar(
                 onClick = onOpenGuide,
             )
         }
-        Spacer(Modifier.weight(1f))
-        SourceStatusPill(
-            refreshing = refreshing,
-            lastRefreshAtMs = lastRefreshAtMs,
-            error = error,
-            onClick = onRefresh,
-        )
-        Spacer(Modifier.width(12.dp))
-        SearchChip(onClick = onOpenSearch)
         Spacer(Modifier.width(12.dp))
         if (activeProfileName != null) {
             ProfileChip(
@@ -1271,6 +1270,167 @@ private fun TopBar(
             Spacer(Modifier.width(12.dp))
         }
         SettingsChip(onClick = onOpenSettings)
+        Spacer(Modifier.width(12.dp))
+        SourceStatusPill(
+            refreshing = refreshing,
+            lastRefreshAtMs = lastRefreshAtMs,
+            error = error,
+            onClick = onRefresh,
+        )
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun FilterChips(
+    languages: List<String>,
+    selectedLanguage: String?,
+    onLanguageSelect: (String?) -> Unit,
+    genres: List<String>,
+    selectedGenre: String?,
+    onGenreSelect: (String?) -> Unit,
+    onClearFilters: () -> Unit,
+) {
+    if (languages.isEmpty() && genres.isEmpty()) return
+
+    var focusedChip by remember { mutableStateOf<FilterChipType?>(null) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 48.dp, vertical = 8.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            // Language chips
+            if (languages.isNotEmpty()) {
+                FilterChip(
+                    label = "Language",
+                    options = languages,
+                    selected = selectedLanguage,
+                    onSelect = onLanguageSelect,
+                    isFocused = focusedChip == FilterChipType.Language,
+                    onFocusChanged = { focused -> focusedChip = if (focused) FilterChipType.Language else null },
+                )
+            }
+
+            // Genre chips
+            if (genres.isNotEmpty()) {
+                FilterChip(
+                    label = "Genre",
+                    options = genres,
+                    selected = selectedGenre,
+                    onSelect = onGenreSelect,
+                    isFocused = focusedChip == FilterChipType.Genre,
+                    onFocusChanged = { focused -> focusedChip = if (focused) FilterChipType.Genre else null },
+                )
+            }
+
+            // Clear filters button
+            if (selectedLanguage != null || selectedGenre != null) {
+                TabPill(
+                    label = "Clear",
+                    selected = false,
+                    onClick = onClearFilters,
+                )
+            }
+        }
+    }
+}
+
+private enum class FilterChipType { Language, Genre }
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun FilterChip(
+    label: String,
+    options: List<String>,
+    selected: String?,
+    onSelect: (String?) -> Unit,
+    isFocused: Boolean,
+    onFocusChanged: (Boolean) -> Unit,
+) {
+    var localFocused by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (localFocused || isFocused) 1.06f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "filter-chip-scale",
+    )
+    val listState = androidx.tv.foundation.lazy.list.rememberTvLazyListState()
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium.copy(
+                color = IptvPalette.TextSecondary,
+                fontWeight = FontWeight.SemiBold,
+            ),
+            modifier = Modifier.padding(end = 8.dp),
+        )
+        TvLazyRow(
+            state = listState,
+            modifier = Modifier
+                .scale(scale)
+                .onFocusChanged { localFocused = it.isFocused; onFocusChanged(it.isFocused) }
+                .tvFocus(localFocused || isFocused, RoundedCornerShape(999.dp), FocusStyle.RowScale),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(options, key = { it }) { option ->
+                val isSelected = option == selected
+                FilterChipOption(
+                    label = option,
+                    selected = isSelected,
+                    onClick = { onSelect(if (isSelected) null else option) },
+                )
+            }
+            // "All" option to clear selection
+            item(key = "__all__") {
+                FilterChipOption(
+                    label = "All",
+                    selected = selected == null,
+                    onClick = { onSelect(null) },
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun FilterChipOption(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(999.dp)
+    Surface(
+        onClick = onClick,
+        shape = ClickableSurfaceDefaults.shape(shape),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = if (selected) IptvPalette.Accent else Color.Transparent,
+            contentColor = if (selected) Color.White else IptvPalette.TextSecondary,
+            focusedContainerColor = if (selected) IptvPalette.Accent else FocusStyle.Fill,
+            focusedContentColor = Color.White,
+        ),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+        modifier = Modifier
+            .onFocusChanged { focused = it.isFocused }
+            .tvFocus(focused, shape, FocusStyle.ChipScale)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .widthIn(min = 80.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+            maxLines = 1,
+            softWrap = false,
+        )
     }
 }
 
