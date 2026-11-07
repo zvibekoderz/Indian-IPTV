@@ -3,6 +3,7 @@ package com.indian.iptv.data.db
 import com.indian.iptv.data.DisplayNames
 import com.indian.iptv.data.Channel
 import com.indian.iptv.data.ContentType
+import kotlin.runCatching
 
 fun ChannelEntity.toDomain(): Channel = Channel(
     id = id,
@@ -13,6 +14,10 @@ fun ChannelEntity.toDomain(): Channel = Channel(
     epgChannelId = epgChannelId,
     type = runCatching { ContentType.valueOf(type) }.getOrDefault(ContentType.TV),
     archiveDays = archiveDays,
+    languages = if (languages.isBlank()) emptyList() else languages.split(',').filter { it.isNotBlank() },
+    genres = if (genres.isBlank()) emptyList() else genres.split(',').filter { it.isNotBlank() },
+    number = number,
+    isHd = isHd,
 )
 
 fun Channel.toEntity(
@@ -29,4 +34,8 @@ fun Channel.toEntity(
     type = type.name,
     addedAt = addedAt,
     archiveDays = archiveDays,
+    languages = languages.joinToString(","),
+    genres = genres.joinToString(","),
+    number = number,
+    isHd = isHd,
 )
