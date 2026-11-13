@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
@@ -57,6 +58,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.ui.focus.focusProperties
@@ -66,6 +68,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -388,6 +391,7 @@ private fun NetflixLayout(
                                     onDone = { onSetManaging(false) },
                                     onToggleFavorite = onToggleFavorite,
                                     onMoveFavorite = onMoveFavorite,
+                                    onContextMenu = { contextTarget = it },
                                 )
                             else -> RailsView(
                                 state = state,
@@ -470,10 +474,12 @@ private fun KeyHintStrip(
     val hints: List<Int> = when {
         state.managingFavorites -> listOf(
             R.string.keyhint_ok_toggle_favorite,
+            R.string.keyhint_ok_long_menu,
             R.string.keyhint_back_exit,
         )
         state.selectedType == ContentType.TV -> listOf(
             R.string.keyhint_ok_play,
+            R.string.keyhint_ok_long_menu,
             R.string.keyhint_menu_favorites,
             R.string.keyhint_search,
         )
@@ -944,6 +950,8 @@ private fun ManageFavoritesView(
     onDone: () -> Unit,
     onToggleFavorite: (String) -> Unit,
     onMoveFavorite: (String, Int) -> Unit = { _, _ -> },
+    /** Long-OK on a row opens the shared card context menu instead of instant removal. */
+    onContextMenu: (Channel) -> Unit = {},
 ) {
     var orderMode by remember { mutableStateOf(false) }
     var movingId by remember { mutableStateOf<String?>(null) }
@@ -1109,6 +1117,7 @@ private fun ManageFavoritesView(
                             channel = ch,
                             trailing = if (isFav) star else null,
                             onClick = { onToggleFavorite(ch.id) },
+                            onLongClick = { onContextMenu(ch) },
                         )
                     }
                 }
@@ -1124,6 +1133,7 @@ private fun ChannelListRow(
     trailing: String?,
     nowPlaying: String? = null,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(10.dp)
@@ -1139,6 +1149,7 @@ private fun ChannelListRow(
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
         modifier = Modifier
             .fillMaxWidth()
+            .then(if (onLongClick != null) Modifier.okLongPress(onLongClick) else Modifier)
             .onFocusChanged { focused = it.isFocused }
             .tvFocus(focused, shape),
     ) {
@@ -2478,14 +2489,18 @@ internal fun LogoCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 if (!nowPlaying.isNullOrBlank()) {
-                    Text(
-                        text = nowPlaying,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            color = IptvPalette.AccentSoft,
-                        ),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        LivePulseDot()
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = nowPlaying,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                color = IptvPalette.AccentSoft,
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
             if (epgFraction != null && epgFraction > 0f) {
@@ -2622,6 +2637,31 @@ private fun EpgProgressBar(fraction: Float, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * Small breathing red dot shown next to the now-playing title on live cards — signals
+ * "airing now (EPG-tracked)" without shouting. Only appears on cards that actually have
+ * EPG data, so plain catalogue logos stay calm.
+ */
+@Composable
+private fun LivePulseDot(modifier: Modifier = Modifier) {
+    val infinite = rememberInfiniteTransition(label = "live-dot")
+    val alpha by infinite.animateFloat(
+        initialValue = 0.40f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = androidx.compose.animation.core.LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "live-dot-alpha",
+    )
+    Box(
+        modifier = modifier
+            .size(8.dp)
+            .alpha(alpha)
+            .background(Color(0xFFE53935), CircleShape),
+    )
+}
+
 /** Small rounded label pill (HD / NEW / language) drawn over card artwork. */
 @Composable
 private fun Badge(text: String, container: Color, modifier: Modifier = Modifier) {
@@ -2664,6 +2704,44 @@ private fun CardProgressBar(fraction: Float, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * D-pad long-press detection for focusable surfaces.
+ *
+ * TV-material's `Surface(onLongClick)` reliably fires for touch long-presses, but on many
+ * remotes (Formuler among them) a *held* OK button never triggers it — the hold degrades
+ * into a plain click on key-up. That made held OK on cards fire the primary action (or,
+ * on the manage-favourites list, toggle the channel out of favourites) with no options
+ * menu at all.
+ *
+ * This modifier watches for OK key repeats instead: if the key is still down after the
+ * first system repeat (~500 ms), we fire [onLongPress] once and swallow the repeats plus
+ * the trailing key-up, so the click handler never sees the hold.
+ */
+private fun Modifier.okLongPress(onLongPress: () -> Unit): Modifier = composed {
+    val longFired = remember { mutableStateOf(false) }
+    onPreviewKeyEvent { event ->
+        val native = event.nativeKeyEvent
+        val isOk = native.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
+            native.keyCode == android.view.KeyEvent.KEYCODE_ENTER
+        when {
+            !isOk -> false
+            native.action == android.view.KeyEvent.ACTION_DOWN && native.repeatCount >= 1 -> {
+                if (!longFired.value) {
+                    longFired.value = true
+                    onLongPress()
+                }
+                true
+            }
+            native.action == android.view.KeyEvent.ACTION_UP -> {
+                val consumed = longFired.value
+                longFired.value = false
+                consumed
+            }
+            else -> false
+        }
+    }
+}
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun FocusableCard(
@@ -2699,7 +2777,16 @@ private fun FocusableCard(
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
         modifier = Modifier
             .size(width = width, height = height)
+            .then(
+                if (focused) Modifier.shadow(
+                    elevation = 12.dp,
+                    shape = shape,
+                    ambientColor = IptvPalette.AccentSoft.copy(alpha = 0.30f),
+                    spotColor = IptvPalette.AccentSoft.copy(alpha = 0.85f),
+                ) else Modifier,
+            )
             .scale(scale)
+            .then(if (onLongClick != null) Modifier.okLongPress(onLongClick) else Modifier)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged { focused = it.isFocused }
             .then(

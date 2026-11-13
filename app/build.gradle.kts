@@ -22,7 +22,9 @@ android {
 
     defaultConfig {
         applicationId = "com.indian.iptv"
-        minSdk = 29
+        // Android 9 (API 28) is the floor so the same APK also installs on phones/tablets:
+        // the codebase has no API-29+ calls (no Build.VERSION guards needed anywhere).
+        minSdk = 28
         targetSdk = 34
         versionCode = 1
         versionName = "0.1.0"

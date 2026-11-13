@@ -1,5 +1,7 @@
 # Indian IPTV
 
+[![Android build](https://github.com/zvibekoderz/Indian-IPTV/actions/workflows/android-build.yml/badge.svg)](https://github.com/zvibekoderz/Indian-IPTV/actions/workflows/android-build.yml)
+
 A lightweight, open-source IPTV player for Android TV 10+, built natively in
 Kotlin with Compose for TV and Media3/ExoPlayer. Pre-loaded with **Indian
 channels** from the [iptv-org](https://github.com/iptv-org/iptv) curated
@@ -8,6 +10,10 @@ custom HTTP headers via `#EXTVLCOPT`.
 
 Originally tuned for the **Formuler Z10 Pro Max**, but runs on any Android TV
 device with API 29 or higher.
+
+The same APK also installs on **phones and tablets (Android 9–17)**: leanback is not a required
+feature, and the app registers with both the TV launcher and the normal phone launcher. The UI
+stays landscape and D-pad-friendly; cards, tabs and search all respond to touch as well.
 
 > **Disclaimers.** This project is an independent community app, **not
 > affiliated with or endorsed by Formuler**. "Formuler" and "Z10 Pro Max" are
