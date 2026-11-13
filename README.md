@@ -11,9 +11,18 @@ custom HTTP headers via `#EXTVLCOPT`.
 Originally tuned for the **Formuler Z10 Pro Max**, but runs on any Android TV
 device with API 29 or higher.
 
-The same APK also installs on **phones and tablets (Android 9–17)**: leanback is not a required
-feature, and the app registers with both the TV launcher and the normal phone launcher. The UI
-stays landscape and D-pad-friendly; cards, tabs and search all respond to touch as well.
+### TV and phone are separate builds
+
+The project uses product flavours instead of one universal APK:
+
+| Flavour | Package | Min Android | Launcher |
+|---|---|---|---|
+| `tv` | `com.indian.iptv` | 10 (API 29) | Leanback launcher |
+| `mobile` | `com.indian.iptv.mobile` | 9 (API 28) | Phone app drawer, portrait allowed |
+
+Build them with `./gradlew :app:assembleTvDebug` and `:app:assembleMobileDebug`.
+Both can be installed on the same device; the phone UI is the same D-pad-first
+interface — cards, tabs and search respond to touch.
 
 > **Disclaimers.** This project is an independent community app, **not
 > affiliated with or endorsed by Formuler**. "Formuler" and "Z10 Pro Max" are

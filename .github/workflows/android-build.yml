@@ -30,15 +30,17 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Build debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace
+      - name: Build debug APKs (TV + mobile)
+        run: ./gradlew :app:assembleTvDebug :app:assembleMobileDebug --stacktrace
 
-      - name: Upload APK artifact
+      - name: Upload APK artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: indian-iptv-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: indian-iptv-debug-apks
+          path: |
+            app/build/outputs/apk/tv/debug/*-tv-debug.apk
+            app/build/outputs/apk/mobile/debug/*-mobile-debug.apk
           if-no-files-found: error
 
   unit-tests:
