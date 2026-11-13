@@ -11,6 +11,10 @@ custom HTTP headers via `#EXTVLCOPT`.
 Originally tuned for the **Formuler Z10 Pro Max**, but runs on any Android TV
 device with API 29 or higher.
 
+The same APK also installs on **phones and tablets (Android 9–17)**: leanback is not a required
+feature, and the app registers with both the TV launcher and the normal phone launcher. The UI
+stays landscape and D-pad-friendly; cards, tabs and search all respond to touch as well.
+
 > **Disclaimers.** This project is an independent community app, **not
 > affiliated with or endorsed by Formuler**. "Formuler" and "Z10 Pro Max" are
 > trademarks of their respective owners. The app is a media player — it ships
