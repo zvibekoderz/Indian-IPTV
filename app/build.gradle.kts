@@ -22,32 +22,14 @@ android {
 
     defaultConfig {
         applicationId = "com.indian.iptv"
-        // The TV flavour is the baseline: Android TV 10+ (API 29).
+        // TV app baseline: Android TV 10+ (API 29). Phone users install the
+        // separate :mobileapp module (com.indian.iptv.mobile).
         minSdk = 29
         targetSdk = 34
         versionCode = 1
         versionName = "0.1.0"
 
         buildConfigField("String", "TMDB_BEARER_TOKEN", "\"$tmdbBearerToken\"")
-    }
-
-    // Separate form-factor builds instead of one universal APK: the TV build keeps the
-    // leanback launcher and the API 29 floor; the mobile build (com.indian.iptv.mobile)
-    // runs on phones down to Android 9 (the codebase has no API-29+ calls) and can be
-    // installed alongside the TV build. The mobile flavour's manifest overlay
-    // (app/src/mobile/AndroidManifest.xml) drops the leanback launcher and unlocks
-    // portrait orientation for touch use.
-    flavorDimensions += "formFactor"
-    productFlavors {
-        create("tv") {
-            dimension = "formFactor"
-        }
-        create("mobile") {
-            dimension = "formFactor"
-            applicationIdSuffix = ".mobile"
-            versionNameSuffix = "-mobile"
-            minSdk = 28
-        }
     }
 
     signingConfigs {
