@@ -10,6 +10,18 @@ class Settings(context: Context) {
 
     private val prefs = context.getSharedPreferences("iptv_mobile", Context.MODE_PRIVATE)
 
+    init {
+        // One-time migration: scale mode was persisted during the era of the
+        // cycle chip, which could silently leave Zoom (cropped picture)
+        // selected. Reset to Fit exactly once after this update.
+        if (!prefs.getBoolean(KEY_SCALE_RESET, false)) {
+            prefs.edit()
+                .putBoolean(KEY_SCALE_RESET, true)
+                .putInt(KEY_SCALE_MODE, 0)
+                .apply()
+        }
+    }
+
     /** Playlist sources, newest first in the UI. One URL per entry. */
     var m3uUrls: List<String>
         get() = prefs.getString(KEY_URLS, null)
@@ -47,5 +59,6 @@ class Settings(context: Context) {
         private const val KEY_URLS = "m3u_urls"
         private const val KEY_FAVOURITES = "favourite_urls"
         private const val KEY_SCALE_MODE = "scale_mode"
+        private const val KEY_SCALE_RESET = "scale_mode_reset_v2"
     }
 }
