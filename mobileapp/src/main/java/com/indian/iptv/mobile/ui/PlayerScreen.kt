@@ -2,6 +2,7 @@ package com.indian.iptv.mobile.ui
 
 import android.app.Activity
 import android.content.pm.ActivityInfo
+import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -48,6 +49,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.indian.iptv.mobile.data.Channel
 import com.indian.iptv.mobile.data.PlaylistFetcher
+import kotlinx.coroutines.delay
 
 /**
  * Full-screen player. Locks to sensor landscape while visible, hides the
@@ -67,6 +69,12 @@ fun PlayerScreen(channel: Channel, onClose: () -> Unit) {
         val previousOrientation = activity?.requestedOrientation
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         if (window != null) {
+            // Let the video extend edge-to-edge, including around the camera
+            // cutout, so no hardware area reflows the picture.
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
             WindowCompat.setDecorFitsSystemWindows(window, false)
             val controller = WindowInsetsControllerCompat(window, window.decorView)
             controller.systemBarsBehavior =
@@ -91,7 +99,21 @@ fun PlayerScreen(channel: Channel, onClose: () -> Unit) {
         AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
     )
     val resizeLabels = listOf("Fit", "Fill", "Zoom")
+    val resizeHints = listOf(
+        "whole picture (small bars on the sides)",
+        "stretched to every edge (may look distorted)",
+        "fills the screen (top & bottom get cropped)",
+    )
     var resizeIndex by remember { mutableIntStateOf(0) }
+
+    // Briefly explain the current aspect mode — on open and on every change —
+    // so cropping/stretching is never a surprise.
+    var modeHint by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(resizeIndex) {
+        modeHint = resizeLabels[resizeIndex] + " — " + resizeHints[resizeIndex]
+        delay(1400)
+        modeHint = null
+    }
 
     val player = remember(channel.url) {
         val httpFactory = DefaultHttpDataSource.Factory()
@@ -178,6 +200,20 @@ fun PlayerScreen(channel: Channel, onClose: () -> Unit) {
                 color = Color.White,
                 style = MaterialTheme.typography.labelLarge,
             )
+        }
+
+        // Transient explanation of the current aspect mode.
+        modeHint?.let { hint ->
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 24.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color(0xB3000000))
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+            ) {
+                Text(hint, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+            }
         }
 
         val alpha by animateFloatAsState(if (buffering) 1f else 0f, tween(300), label = "buffer")
