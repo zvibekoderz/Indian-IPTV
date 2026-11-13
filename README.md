@@ -24,6 +24,8 @@ device with API 29 or higher.
 
 ### Sources
 - **Multiple playlists at once** — add as many M3U URLs as you like; every channel is merged into one catalogue. Ids from the first playlist stay stable, so favourites survive; a clash in a later playlist gets a `@s<index>` suffix
+- **DNS-over-HTTPS fallback** — if the device resolver answers `0.0.0.0` (ISP or ad-blocker DNS filtering), downloads resolve through `1.1.1.1` / `8.8.8.8` over HTTPS instead of failing
+- **Type the source on your phone** — Settings shows a QR code; scanning it opens a small form in the phone's browser (a token-protected LAN server) and submits the playlist URL or Xtream credentials straight to the TV
 - **M3U / M3U8** playlists (extended format with `tvg-*`, `group-title`, and **`#EXTVLCOPT`** custom headers)
 - **Xtream Codes** accounts (live, VOD, series) via a typed Retrofit client
 - **Custom HTTP headers** per channel: `#EXTVLCOPT:http-user-agent=...` and `#EXTVLCOPT:http-referrer=...` — essential for providers that require specific User-Agent or Referrer
@@ -36,6 +38,8 @@ device with API 29 or higher.
 - **Now-on progress** — every live card shows the current programme plus a thin bar for how far through it is
 - **HD / NEW badges** on cards so quality and freshly-added channels are visible at a glance
 - D-pad navigation, Play/Pause, Channel Up/Down, numeric channel entry
+- **Programme reminders** — OK on an upcoming programme in the guide sets a reminder; the app prompts you when it starts
+- **Catch-up / timeshift** on Xtream sources — watch a programme from earlier in the day (start-over and archive replay where the provider allows it)
 - Audio track and subtitle selection, with adjustable subtitle delay
 - Stream stats overlay (resolution, bitrate, codec, buffer, dropped frames)
 - Now/Next from XMLTV EPG when the provider exposes it
@@ -54,13 +58,15 @@ device with API 29 or higher.
 
 ### TMDB enrichment (optional)
 - Posters, overviews, popularity ranking and a "Popular now" rail
+- Hero carousel on the Movies/Series tabs with a muted **trailer autoplaying** in the background
 - Entirely optional — without a TMDB token the feature silently disables and the rest of the app keeps working
 
 ### Player
 - Media3 / ExoPlayer with HLS, DASH and progressive TS support
 - Adaptive playback with explicit audio-capability detection for the set-top box's HDMI audio path
+- **Automatic frame-rate matching** — switches the display to the content's refresh rate (24/25/30/50/60 fps) to remove judder, with a render-rate fallback for tunneled TS
 - Configurable aspect ratio (Fit / Fill / Zoom)
-- Remote-friendly overlay panels for audio, subtitles and info, all reachable through the coloured remote buttons
+- Remote-friendly overlay panels for audio, subtitles (with adjustable delay) and info, all reachable through the coloured remote buttons
 
 ## Requirements
 
@@ -115,7 +121,7 @@ On first launch a welcome wizard opens with **iptv-org's India playlist pre-fill
 
 Useful tips:
 
-- A USB keyboard paired to the TV saves a lot of D-pad typing when entering URLs or credentials.
+- A USB keyboard paired to the TV saves a lot of D-pad typing when entering URLs or credentials — or skip typing entirely: Settings shows a **QR code** that opens the source form in your phone's browser.
 - On-screen text fields also accept `adb shell input text "..."` from a connected dev machine.
 - Additional profiles can be created under Settings → Profiles.
 
@@ -140,7 +146,7 @@ The parser extracts `http-user-agent` and `http-referrer` and applies them autom
 - **Media3 / ExoPlayer** (HLS, DASH, TS)
 - **Room** for the catalogue and watch-progress cache
 - **Retrofit** + **kotlinx.serialization** for Xtream and TMDB APIs
-- **OkHttp** (shared across Retrofit and Coil) with custom header interceptor
+- **OkHttp** (shared across Retrofit and Coil) with custom header interceptor and a DNS-over-HTTPS fallback resolver
 - **WorkManager** for the scheduled refresh
 - **DataStore (Preferences)** for settings
 - **Coil** for image loading
@@ -169,8 +175,11 @@ app/src/main/java/com/indian/iptv/
     epg/XmltvParser.kt          XMLTV parser for now/next
     tmdb/                       TMDB API client, matchers, popular repo
     remote/HttpClient.kt        Shared OkHttp + Retrofit + custom header interceptor
+    remote/DohDns.kt            DNS-over-HTTPS fallback resolver (1.1.1.1 / 8.8.8.8)
     db/                         Room entities, DAOs, mappers
-    settings/                   DataStore-backed settings + SourceConfig
+    settings/                   DataStore-backed settings, SourceConfig and the
+                                QR-code phone setup server
+    reminders/                  EPG programme reminders
     repo/                       PlaylistRepository abstraction,
                                 refresh use case, scheduler and WorkManager
                                 worker
