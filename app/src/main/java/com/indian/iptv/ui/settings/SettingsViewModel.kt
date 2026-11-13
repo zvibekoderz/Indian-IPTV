@@ -16,6 +16,7 @@ import com.indian.iptv.data.settings.SourceTestResult
 import com.indian.iptv.data.settings.PhoneSetupServer
 import com.indian.iptv.IptvApp
 import com.indian.iptv.R
+import com.indian.iptv.data.settings.DEFAULT_M3U_URL
 import com.indian.iptv.data.settings.SourceConfig
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
@@ -23,7 +24,8 @@ enum class SourceType { M3u, Xtream }
 
 data class SettingsUiState(
     val type: SourceType = SourceType.M3u,
-    val m3uUrl: String = "",
+    /** One entry per playlist; the first is the primary. */
+    val m3uUrls: List<String> = listOf(DEFAULT_M3U_URL),
     val host: String = "",
     val username: String = "",
     val password: String = "",
@@ -68,7 +70,9 @@ class SettingsViewModel : ViewModel() {
             val current = app.settings.sourceConfig.first()
             initialSource = current
             when (current) {
-                is SourceConfig.M3u -> _state.update { it.copy(type = SourceType.M3u, m3uUrl = current.url) }
+                is SourceConfig.M3u -> _state.update {
+                    it.copy(type = SourceType.M3u, m3uUrls = current.urls)
+                }
                 is SourceConfig.Xtream -> _state.update {
                     it.copy(
                         type = SourceType.Xtream,
@@ -112,7 +116,7 @@ class SettingsViewModel : ViewModel() {
         PhoneSetupServer.consume()
         _state.update {
             if (sub.type.equals("m3u", ignoreCase = true)) {
-                it.copy(type = SourceType.M3u, m3uUrl = sub.m3uUrl, testResult = null, validationError = null, filledFromPhone = true)
+                it.copy(type = SourceType.M3u, m3uUrls = listOf(sub.m3uUrl), testResult = null, validationError = null, filledFromPhone = true)
             } else {
                 it.copy(
                     type = SourceType.Xtream,
@@ -128,7 +132,31 @@ class SettingsViewModel : ViewModel() {
     }
 
     fun setType(type: SourceType) { _state.update { it.copy(type = type, validationError = null, testResult = null) } }
-    fun setM3uUrl(v: String) { _state.update { it.copy(m3uUrl = v, validationError = null) } }
+    fun setM3uUrl(index: Int, value: String) {
+        _state.update { state ->
+            val urls = state.m3uUrls.toMutableList()
+            if (index !in urls.indices) return@update state
+            urls[index] = value
+            state.copy(m3uUrls = urls, validationError = null)
+        }
+    }
+
+    fun addM3uUrl() {
+        _state.update { it.copy(m3uUrls = it.m3uUrls + "", validationError = null) }
+    }
+
+    fun removeM3uUrl(index: Int) {
+        _state.update { state ->
+            val urls = state.m3uUrls.toMutableList()
+            if (index !in urls.indices) return@update state
+            urls.removeAt(index)
+            state.copy(
+                // Keep at least one editable row so the field never disappears.
+                m3uUrls = urls.ifEmpty { listOf("") },
+                validationError = null,
+            )
+        }
+    }
     fun setHost(v: String) { _state.update { it.copy(host = v, validationError = null) } }
     fun setUsername(v: String) { _state.update { it.copy(username = v, validationError = null) } }
     fun setPassword(v: String) { _state.update { it.copy(password = v, validationError = null) } }
@@ -139,8 +167,12 @@ class SettingsViewModel : ViewModel() {
         val s = _state.value
         return when (s.type) {
             SourceType.M3u -> {
-                val url = normaliseUrl(s.m3uUrl) ?: run { fail(R.string.settings_invalid_m3u); return null }
-                SourceConfig.M3u(url)
+                val urls = s.m3uUrls.mapNotNull { normaliseUrl(it) }
+                if (urls.isEmpty()) {
+                    fail(R.string.settings_invalid_m3u)
+                    return null
+                }
+                SourceConfig.M3u(urls)
             }
             SourceType.Xtream -> {
                 val host = normaliseUrl(s.host) ?: run { fail(R.string.settings_invalid_host); return null }
@@ -206,7 +238,7 @@ class SettingsViewModel : ViewModel() {
         viewModelScope.launch {
             _state.update { it.copy(saving = true, validationError = null) }
             when (newSource) {
-                is SourceConfig.M3u -> app.settings.saveM3u(newSource.url)
+                is SourceConfig.M3u -> app.settings.saveM3uUrls(newSource.urls)
                 is SourceConfig.Xtream ->
                     app.settings.saveXtream(newSource.host, newSource.username, newSource.password)
             }

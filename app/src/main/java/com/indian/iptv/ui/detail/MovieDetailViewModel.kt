@@ -35,6 +35,8 @@ data class MovieDetailState(
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
     val isFavorite: Boolean = false,
+    /** True when this title is in the per-profile "Watchlist" (save for later). */
+    val isOnWatchlist: Boolean = false,
     // Rich metadata — all optional; filled in once get_vod_info returns.
     val plot: String? = null,
     val cast: String? = null,
@@ -128,6 +130,23 @@ class MovieDetailViewModel : ViewModel() {
             .map { channelId in it }
             .onEach { fav -> _state.update { it.copy(isFavorite = fav) } }
             .launchIn(scope)
+
+        activeProfileIdFlow
+            .flatMapLatest { profileId -> dao.observeWatchlistIds(profileId) }
+            .map { channelId in it }
+            .onEach { saved -> _state.update { it.copy(isOnWatchlist = saved) } }
+            .launchIn(scope)
+    }
+
+    /** Add/remove this title in the per-profile watchlist (separate from favourites). */
+    fun toggleWatchlist() {
+        val id = loadedId ?: return
+        val saved = _state.value.isOnWatchlist
+        val profileId = activeProfileIdFlow.value
+        viewModelScope.launch {
+            if (saved) dao.removeWatchlist(profileId, id)
+            else dao.addWatchlist(profileId, id)
+        }
     }
 
     fun toggleFavorite() {

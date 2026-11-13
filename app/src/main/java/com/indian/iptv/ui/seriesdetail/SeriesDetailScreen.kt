@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -82,6 +83,7 @@ fun SeriesDetailScreen(
         state = state,
         onSelectSeason = vm::selectSeason,
         onToggleFavorite = vm::toggleFavorite,
+        onToggleWatchlist = vm::toggleWatchlist,
         onPlayEpisode = { ep, season, resumeMs ->
             val seriesChannelId = state.seriesChannelId ?: return@DetailBody
             onPlayEpisode(ep, season, SeriesRef(seriesChannelId, state.title, state.cover), resumeMs)
@@ -95,6 +97,7 @@ private fun DetailBody(
     state: SeriesDetailState,
     onSelectSeason: (Int) -> Unit,
     onToggleFavorite: () -> Unit,
+    onToggleWatchlist: () -> Unit,
     onPlayEpisode: (Episode, SeriesSeason, Long) -> Unit,
 ) {
     // The play button exists from the first frame (as a placeholder while episodes load),
@@ -149,6 +152,15 @@ private fun DetailBody(
                     if (state.isFavorite) R.string.detail_remove_from_list else R.string.detail_add_to_list,
                 ),
                 onClick = onToggleFavorite,
+            )
+            com.indian.iptv.ui.detail.DetailActionButton(
+                icon = if (state.isOnWatchlist) Icons.Filled.Bookmarks else Icons.Filled.BookmarkBorder,
+                label = stringResource(R.string.rail_watchlist),
+                contentDescription = stringResource(
+                    if (state.isOnWatchlist) R.string.context_remove_watchlist
+                    else R.string.context_save_watchlist,
+                ),
+                onClick = onToggleWatchlist,
             )
         },
     ) {

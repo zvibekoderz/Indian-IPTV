@@ -111,7 +111,7 @@ class PlaylistRefreshUseCase(
     private suspend fun repository(): PlaylistRepository? =
         when (val config = settings.sourceConfig.first()) {
             null -> null
-            is SourceConfig.M3u -> M3uPlaylistRepository(config.url, HttpClient.okHttp)
+            is SourceConfig.M3u -> M3uPlaylistRepository(config.urls, HttpClient.okHttp)
             is SourceConfig.Xtream -> XtreamPlaylistRepository(
                 config.host,
                 config.username,
@@ -121,7 +121,7 @@ class PlaylistRefreshUseCase(
         }
 
     private suspend fun refresh(force: Boolean, onCatalogueReady: () -> Unit) {
-        val repo = repository() ?: error("Geen bron geconfigureerd.")
+        val repo = repository() ?: error("No source configured.")
 
         val etag = if (force) null else settings.playlistEtag.first()
         val lastMod = if (force) null else settings.playlistLastModified.first()

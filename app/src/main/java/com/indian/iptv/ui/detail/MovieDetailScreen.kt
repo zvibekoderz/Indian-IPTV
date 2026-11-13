@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.OndemandVideo
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
@@ -97,6 +98,7 @@ fun MovieDetailScreen(
                 state = state,
                 onPlay = { resumeMs -> state.channel?.let { onPlay(it, resumeMs) } },
                 onToggleFavorite = vm::toggleFavorite,
+                onToggleWatchlist = vm::toggleWatchlist,
                 onPickRelated = onPickRelated,
             )
         }
@@ -110,6 +112,7 @@ private fun DetailBody(
     state: MovieDetailState,
     onPlay: (resumeMs: Long) -> Unit,
     onToggleFavorite: () -> Unit,
+    onToggleWatchlist: () -> Unit,
     onPickRelated: (Channel) -> Unit,
 ) {
     val playFocus = remember { FocusRequester() }
@@ -182,10 +185,19 @@ private fun DetailBody(
                 ),
                 onClick = onToggleFavorite,
             )
+            DetailActionButton(
+                icon = if (state.isOnWatchlist) Icons.Filled.Bookmarks else Icons.Filled.BookmarkBorder,
+                label = stringResource(R.string.rail_watchlist),
+                contentDescription = stringResource(
+                    if (state.isOnWatchlist) R.string.context_remove_watchlist
+                    else R.string.context_save_watchlist,
+                ),
+                onClick = onToggleWatchlist,
+            )
         },
     ) {
         val credits = listOfNotNull(
-            state.director?.let { "Regie: $it" },
+            state.director?.let { "Director: $it" },
             state.cast?.let { "Cast: $it" },
         )
         state.plot?.takeIf { it.isNotBlank() }?.let { plot ->

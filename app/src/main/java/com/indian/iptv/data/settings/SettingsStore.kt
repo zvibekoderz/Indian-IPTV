@@ -6,17 +6,21 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore by preferencesDataStore(name = "settings")
 
+/** Shipped default playlist: iptv-org's India-only list (~220 KB). */
+const val DEFAULT_M3U_URL = "https://iptv-org.github.io/iptv/countries/in.m3u"
+
 class SettingsStore(private val context: Context) {
 
     val sourceConfig: Flow<SourceConfig?> = context.dataStore.data.map { prefs ->
         when (prefs[TYPE]) {
-            TYPE_M3U -> prefs[M3U_URL]?.takeIf { it.isNotBlank() }?.let(SourceConfig::M3u)
+            TYPE_M3U -> prefs.playlistUrls().takeIf { it.isNotEmpty() }?.let { SourceConfig.M3u(it) }
             TYPE_XTREAM -> {
                 val host = prefs[XT_HOST]?.trim().orEmpty()
                 val user = prefs[XT_USER].orEmpty()
@@ -31,6 +35,19 @@ class SettingsStore(private val context: Context) {
 
     val playlistEtag: Flow<String?> = context.dataStore.data.map { it[PLAYLIST_ETAG] }
     val playlistLastModified: Flow<String?> = context.dataStore.data.map { it[PLAYLIST_LAST_MODIFIED] }
+
+    /** Every configured M3U playlist, in order. Empty when only an Xtream source exists. */
+    val m3uUrls: Flow<List<String>> = context.dataStore.data.map { it.playlistUrls() }
+
+    /** New list first; falls back to the legacy single-URL key written by older builds. */
+    private fun Preferences.playlistUrls(): List<String> {
+        val list = this[M3U_URLS]
+            ?.split('\n')
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+        if (!list.isNullOrEmpty()) return list
+        return listOfNotNull(this[M3U_URL]?.takeIf { it.isNotBlank() })
+    }
 
     /**
      * Currently-active profile. Defaults to the built-in "default" profile seeded by
@@ -215,10 +232,24 @@ class SettingsStore(private val context: Context) {
         }
     }
 
-    suspend fun saveM3u(url: String) {
+    suspend fun saveM3u(url: String) = saveM3uUrls(listOf(url))
+
+    /**
+     * Persists one or more M3U playlists. Downstream code always sees [SourceConfig.M3u.urls];
+     * the legacy single-URL key is kept in sync with the first entry so an older build reading
+     * the same preferences still works.
+     */
+    suspend fun saveM3uUrls(urls: List<String>) {
+        val clean = urls.map { it.trim() }.filter { it.isNotBlank() }
         context.dataStore.edit { prefs ->
             prefs[TYPE] = TYPE_M3U
-            prefs[M3U_URL] = url.trim()
+            if (clean.isEmpty()) {
+                prefs.remove(M3U_URL)
+                prefs.remove(M3U_URLS)
+            } else {
+                prefs[M3U_URLS] = clean.joinToString("\n")
+                prefs[M3U_URL] = clean.first()
+            }
             prefs.remove(XT_HOST); prefs.remove(XT_USER); prefs.remove(XT_PASS)
             prefs.remove(PLAYLIST_ETAG); prefs.remove(PLAYLIST_LAST_MODIFIED)
         }
@@ -246,6 +277,7 @@ class SettingsStore(private val context: Context) {
     private companion object {
         val TYPE = stringPreferencesKey("source_type")
         val M3U_URL = stringPreferencesKey("m3u_url")
+        val M3U_URLS = stringPreferencesKey("m3u_urls")
         val XT_HOST = stringPreferencesKey("xt_host")
         val XT_USER = stringPreferencesKey("xt_user")
         val XT_PASS = stringPreferencesKey("xt_pass")
@@ -271,6 +303,6 @@ class SettingsStore(private val context: Context) {
         const val RECENT_SEARCHES_MAX = 6
         const val DEFAULT_PROFILE_ID = "default"
         const val DEFAULT_AUTO_REFRESH_HOUR = 3
-        const val DEFAULT_CATEGORY_FILTER = "NL, UK, US, USA, EN"
+        const val DEFAULT_CATEGORY_FILTER = "IN, EN, HI"
     }
 }

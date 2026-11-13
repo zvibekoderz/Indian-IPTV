@@ -198,6 +198,7 @@ fun ChannelsScreen(
                     onRemoveFromContinue = vm::removeFromContinueWatching,
                     onMarkWatched = vm::markWatched,
                     onToggleFavorite = vm::toggleFavorite,
+                    onToggleWatchlist = vm::toggleWatchlist,
                     onMoveFavorite = vm::moveFavorite,
                     onSearchChange = vm::setSearchQuery,
                     onRememberSearch = vm::rememberCurrentSearch,
@@ -249,6 +250,7 @@ private fun NetflixLayout(
     onRemoveFromContinue: (String) -> Unit,
     onMarkWatched: (String) -> Unit,
     onToggleFavorite: (String) -> Unit,
+    onToggleWatchlist: (String) -> Unit,
     onMoveFavorite: (String, Int) -> Unit,
     onSearchChange: (String) -> Unit,
     onRememberSearch: () -> Unit,
@@ -425,9 +427,14 @@ private fun NetflixLayout(
                 CardContextMenu(
                     channel = target,
                     isFavorite = target.id in state.favoriteIds,
+                    isOnWatchlist = target.id in state.watchlistIds,
                     hasProgress = (state.progressById[target.id] ?: 0f) > 0f,
                     onToggleFavorite = {
                         onToggleFavorite(target.id)
+                        close()
+                    },
+                    onToggleWatchlist = {
+                        onToggleWatchlist(target.id)
                         close()
                     },
                     onRemoveFromContinue = {
@@ -617,6 +624,8 @@ private fun RailsView(
                         progressById = state.progressById,
                         onHover = onHover,
                         nowPlayingByEpgId = state.nowPlayingByEpgId,
+                        epgProgressByEpgId = state.epgProgressByEpgId,
+                        newIds = state.newlyAddedIds,
                         onPlay = { ch ->
                             if (rail.isDirectPlay) {
                                 // "Verder kijken": skip the detail screen; auto-resume.
@@ -640,6 +649,8 @@ private fun RailsView(
                             contentType = state.selectedType,
                             progressById = state.progressById,
                             onHover = onHover,
+                            epgProgressByEpgId = state.epgProgressByEpgId,
+                            newIds = state.newlyAddedIds,
                             onPlay = { ch -> onPlay(ch, state.recentlyAdded) },
                         )
                     }
@@ -654,6 +665,8 @@ private fun RailsView(
                         progressById = state.progressById,
                         onHover = onHover,
                         nowPlayingByEpgId = state.nowPlayingByEpgId,
+                        epgProgressByEpgId = state.epgProgressByEpgId,
+                        newIds = state.newlyAddedIds,
                         onPlay = { ch ->
                             if (rail.isDirectPlay) {
                                 // "Verder kijken": skip the detail screen; auto-resume.
@@ -2199,6 +2212,8 @@ private fun RailRow(
     nowPlayingByEpgId: Map<String, String> = emptyMap(),
     onPlay: (Channel) -> Unit,
     onHover: ((Channel?) -> Unit)? = null,
+    epgProgressByEpgId: Map<String, Float> = emptyMap(),
+    newIds: Set<String> = emptySet(),
 ) {
     // Populair-nu morphs into the Netflix-style Top 10 treatment when we have at least 3
     // matches, with the oversized numeral to the left of each poster. The cutoff keeps the
@@ -2278,6 +2293,8 @@ private fun RailRow(
                             onFocused = onFocused,
                             onBlurred = onBlurred,
                             onLongClick = onLongClick,
+                            epgFraction = channel.epgChannelId?.let { epgProgressByEpgId[it] },
+                            isNew = channel.id in newIds,
                         )
                         ContentType.MOVIE, ContentType.SERIES ->
                             PosterCard(
@@ -2289,6 +2306,7 @@ private fun RailRow(
                                 onFocused = onFocused,
                                 onBlurred = onBlurred,
                                 onLongClick = onLongClick,
+                                isNew = channel.id in newIds,
                             )
                     }
                 }
@@ -2381,6 +2399,8 @@ internal fun LogoCard(
     onFocused: () -> Unit = {},
     onBlurred: () -> Unit = {},
     onLongClick: (() -> Unit)? = null,
+    epgFraction: Float? = null,
+    isNew: Boolean = false,
 ) {
     FocusableCard(
         width = 220.dp,
@@ -2416,6 +2436,20 @@ internal fun LogoCard(
                         fontWeight = FontWeight.Black,
                         color = IptvPalette.TextSecondary,
                     ),
+                )
+            }
+            if (isNew) {
+                Badge(
+                    text = stringResource(R.string.badge_new),
+                    container = IptvPalette.Accent,
+                    modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+                )
+            }
+            if (channel.isHd) {
+                Badge(
+                    text = stringResource(R.string.badge_hd),
+                    container = IptvPalette.SurfaceElevated.copy(alpha = 0.9f),
+                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
                 )
             }
             Box(
@@ -2454,7 +2488,14 @@ internal fun LogoCard(
                     )
                 }
             }
-            if (progressFraction != null && progressFraction > 0f) {
+            if (epgFraction != null && epgFraction > 0f) {
+                // "How far into the current programme" — the most useful glanceable signal
+                // on a live-TV card. Soft accent so it doesn't read as watch progress.
+                EpgProgressBar(
+                    fraction = epgFraction,
+                    modifier = Modifier.align(Alignment.BottomStart),
+                )
+            } else if (progressFraction != null && progressFraction > 0f) {
                 CardProgressBar(
                     fraction = progressFraction,
                     modifier = Modifier.align(Alignment.BottomStart),
@@ -2475,6 +2516,7 @@ internal fun PosterCard(
     onFocused: () -> Unit = {},
     onBlurred: () -> Unit = {},
     onLongClick: (() -> Unit)? = null,
+    isNew: Boolean = false,
 ) {
     FocusableCard(
         width = 168.dp,
@@ -2488,6 +2530,20 @@ internal fun PosterCard(
         },
     ) { focused ->
         Box(modifier = Modifier.fillMaxSize().background(IptvPalette.SurfaceElevated)) {
+            if (isNew) {
+                Badge(
+                    text = stringResource(R.string.badge_new),
+                    container = IptvPalette.Accent,
+                    modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+                )
+            }
+            if (channel.isHd) {
+                Badge(
+                    text = stringResource(R.string.badge_hd),
+                    container = IptvPalette.SurfaceElevated.copy(alpha = 0.9f),
+                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+                )
+            }
             if (channel.logoUrl != null) {
                 AsyncImage(
                     model = channel.logoUrl,
@@ -2545,6 +2601,44 @@ internal fun PosterCard(
                 )
             }
         }
+    }
+}
+
+/** Tiny 3dp programme-progress line used on live-TV cards. */
+@Composable
+private fun EpgProgressBar(fraction: Float, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(3.dp)
+            .background(Color.White.copy(alpha = 0.16f)),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(fraction.coerceIn(0f, 1f))
+                .fillMaxHeight()
+                .background(IptvPalette.AccentSoft),
+        )
+    }
+}
+
+/** Small rounded label pill (HD / NEW / language) drawn over card artwork. */
+@Composable
+private fun Badge(text: String, container: Color, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(container)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+            ),
+            maxLines = 1,
+        )
     }
 }
 
@@ -2880,6 +2974,8 @@ private fun CardContextMenu(
     onManageChannels: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    isOnWatchlist: Boolean = false,
+    onToggleWatchlist: () -> Unit = {},
 ) {
     val firstFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
@@ -2925,6 +3021,14 @@ private fun CardContextMenu(
         }
         if (!isTv) {
             ContextMenuItem(stringResource(R.string.context_mark_watched), onMarkWatched)
+        }
+        if (!isTv) {
+            val watchLabel = if (isOnWatchlist) {
+                R.string.context_remove_watchlist
+            } else {
+                R.string.context_save_watchlist
+            }
+            ContextMenuItem(label = stringResource(watchLabel), onClick = onToggleWatchlist)
         }
         if (isTv) {
             ContextMenuItem(stringResource(R.string.favorites_manage), onManageChannels)
@@ -3130,7 +3234,7 @@ private fun heroButtonColors() = androidx.tv.material3.ButtonDefaults.colors(
 @Composable
 private fun importProgressLabel(progress: com.indian.iptv.data.repo.ImportProgress?): String? {
     if (progress == null) return null
-    val count = java.text.NumberFormat.getIntegerInstance(java.util.Locale("nl", "NL")).format(progress.count)
+    val count = java.text.NumberFormat.getIntegerInstance(java.util.Locale.getDefault()).format(progress.count)
     return when (progress.stage) {
         com.indian.iptv.data.repo.ImportProgress.Stage.Downloading -> stringResource(R.string.import_downloading)
         com.indian.iptv.data.repo.ImportProgress.Stage.Live -> stringResource(R.string.import_live, count)

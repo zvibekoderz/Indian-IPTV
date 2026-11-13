@@ -37,6 +37,9 @@ object HttpClient {
         _okHttp = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(120, TimeUnit.SECONDS)
+            // Falls back to DNS-over-HTTPS when the system resolver answers 0.0.0.0
+            // (ISP / ad-blocker DNS filtering), which otherwise breaks every download.
+            .dns(DohDns)
             // 20 MB disk-cache for API responses (get_series_info, get_vod_info). Saves a
             // full round-trip every time the user re-opens a detail they've seen recently.
             .cache(Cache(cacheDir, 20L * 1024 * 1024))
@@ -47,6 +50,7 @@ object HttpClient {
     private fun buildUncached(): OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
+        .dns(DohDns)
         .addInterceptor(loggingInterceptor())
         .build()
 

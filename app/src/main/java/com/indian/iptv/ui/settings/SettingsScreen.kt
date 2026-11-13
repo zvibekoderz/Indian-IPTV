@@ -264,13 +264,35 @@ private fun SourceSection(
         )
     }
     when (state.type) {
-        SourceType.M3u -> OutlinedTextField(
-            value = state.m3uUrl,
-            onValueChange = vm::setM3uUrl,
-            label = { androidx.compose.material3.Text(stringResource(R.string.settings_m3u_url)) },
-            singleLine = true,
-            modifier = Modifier.width(720.dp),
-        )
+        SourceType.M3u -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            state.m3uUrls.forEachIndexed { index, url ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedTextField(
+                        value = url,
+                        onValueChange = { vm.setM3uUrl(index, it) },
+                        label = {
+                            androidx.compose.material3.Text(
+                                stringResource(
+                                    if (index == 0) R.string.settings_m3u_url
+                                    else R.string.settings_m3u_extra,
+                                ),
+                            )
+                        },
+                        singleLine = true,
+                        modifier = Modifier.width(600.dp),
+                    )
+                    Button(onClick = { vm.removeM3uUrl(index) }) {
+                        Text(stringResource(R.string.settings_remove))
+                    }
+                }
+            }
+            Button(onClick = vm::addM3uUrl) {
+                Text(stringResource(R.string.settings_add_playlist))
+            }
+        }
         SourceType.Xtream -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(
                 value = state.host,
@@ -356,7 +378,7 @@ private fun TestResultLine(result: SourceTestResult) {
 }
 
 private fun formatCount(n: Int): String =
-    java.text.NumberFormat.getIntegerInstance(java.util.Locale("nl", "NL")).format(n)
+    java.text.NumberFormat.getIntegerInstance(java.util.Locale.getDefault()).format(n)
 
 @Composable
 private fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
@@ -507,6 +529,6 @@ private fun aspectLabel(value: String): String = stringResource(
 private fun languageLabel(code: String): String = when (code) {
     "" -> stringResource(R.string.settings_lang_none)
     "off" -> stringResource(R.string.settings_lang_off)
-    else -> java.util.Locale(code).getDisplayLanguage(java.util.Locale("nl", "NL"))
+    else -> java.util.Locale(code).getDisplayLanguage(java.util.Locale.getDefault())
         .replaceFirstChar { it.uppercase() }
 }

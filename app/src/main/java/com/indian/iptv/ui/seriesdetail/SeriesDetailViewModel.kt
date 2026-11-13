@@ -84,6 +84,8 @@ data class SeriesDetailState(
     val seasons: List<SeriesSeason> = emptyList(),
     val selectedSeasonNumber: Int? = null,
     val isFavorite: Boolean = false,
+    /** True when this series is in the per-profile "Watchlist" (save for later). */
+    val isOnWatchlist: Boolean = false,
     /**
      * Per-season "watched episode" count. Keyed by season number. An episode counts as
      * watched once its saved progress fraction crosses WATCHED_FRACTION. Used by the season
@@ -137,6 +139,13 @@ class SeriesDetailViewModel : ViewModel() {
             .onEach { fav -> _state.update { it.copy(isFavorite = fav) } }
             .launchIn(scope)
 
+        // Watchlist flag: same pattern, separate table.
+        activeProfileIdFlow
+            .flatMapLatest { profileId -> dao.observeWatchlistIds(profileId) }
+            .map { channelId in it }
+            .onEach { saved -> _state.update { it.copy(isOnWatchlist = saved) } }
+            .launchIn(scope)
+
         scope.launch {
             val fallback = dao.getChannelById(channelId)
             _state.update {
@@ -148,7 +157,7 @@ class SeriesDetailViewModel : ViewModel() {
 
             val config = app.settings.sourceConfig.first() as? SourceConfig.Xtream
             if (config == null) {
-                _state.update { it.copy(loading = false, error = "Geen Xtream-bron.") }
+                _state.update { it.copy(loading = false, error = "No Xtream source configured.") }
                 return@launch
             }
 
@@ -244,6 +253,17 @@ class SeriesDetailViewModel : ViewModel() {
         val profileId = activeProfileIdFlow.value
         viewModelScope.launch {
             if (isFav) dao.removeFavorite(profileId, id) else dao.addFavorite(profileId, id)
+        }
+    }
+
+    /** Add/remove this series in the per-profile watchlist (separate from favourites). */
+    fun toggleWatchlist() {
+        val id = _state.value.seriesChannelId ?: return
+        val saved = _state.value.isOnWatchlist
+        val profileId = activeProfileIdFlow.value
+        viewModelScope.launch {
+            if (saved) dao.removeWatchlist(profileId, id)
+            else dao.addWatchlist(profileId, id)
         }
     }
 

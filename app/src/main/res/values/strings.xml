@@ -10,6 +10,9 @@
     <string name="settings_source_m3u">M3U</string>
     <string name="settings_source_xtream">Xtream</string>
     <string name="settings_m3u_url">M3U URL</string>
+    <string name="settings_m3u_extra">Another playlist URL</string>
+    <string name="settings_add_playlist">Add playlist</string>
+    <string name="settings_remove">Remove</string>
     <string name="settings_xtream_host">Host (e.g. http://example.com:8080)</string>
     <string name="settings_xtream_user">Username</string>
     <string name="settings_xtream_pass">Password</string>
@@ -53,7 +56,7 @@
     <string name="favorites_all_categories">All</string>
 
     <string name="search_placeholder">Search...</string>
-    <string name="search_empty">Niks gevonden voor \"%1$s\".</string>
+    <string name="search_empty">No results for \"%1$s\".</string>
     <string name="search_clear">Clear</string>
 
     <string name="detail_play">Play</string>
@@ -239,9 +242,15 @@
     <string name="search_section_series">Series (%1$d)</string>
     <string name="context_favorite_add">Favorite Channel</string>
     <string name="context_favorite_remove">Not a Favorite</string>
-    <string name="context_remove_continue">Delete uit Continue Watching</string>
+    <string name="context_remove_continue">Remove from Continue Watching</string>
     <string name="context_mark_watched">Mark as Watched</string>
+    <string name="context_save_watchlist">Save to Watchlist</string>
+    <string name="context_remove_watchlist">Remove from Watchlist</string>
     <string name="context_close">Close</string>
+
+    <!-- Card badges -->
+    <string name="badge_hd">HD</string>
+    <string name="badge_new">NEW</string>
     <string name="hero_sound_on">Sound On</string>
     <string name="hero_sound_off">Sound Off</string>
     <string name="series_continue_episode">Continue S%1$d:E%2$d</string>

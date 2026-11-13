@@ -89,20 +89,57 @@ object SourceTester {
     }
 
     private fun testM3u(source: SourceConfig.M3u): SourceTestResult {
-        HttpClient.okHttp.newCall(Request.Builder().url(source.url).build()).execute().use { response ->
-            if (response.code == 401 || response.code == 403) {
-                return SourceTestResult.Failed(SourceTestResult.Reason.BadLogin)
+        if (source.urls.isEmpty()) {
+            return SourceTestResult.Failed(SourceTestResult.Reason.Other, "No playlist URL")
+        }
+        var live = 0
+        var movies = 0
+        var series = 0
+        var okCount = 0
+        var lastFailure: SourceTestResult.Failed? = null
+
+        for (url in source.urls) {
+            when (val result = testSingleM3u(url)) {
+                is SourceTestResult.Ok -> {
+                    okCount++
+                    live += result.live
+                    movies += result.movies
+                    series += result.series
+                }
+
+                is SourceTestResult.Failed -> lastFailure = result
             }
-            if (!response.isSuccessful) {
-                return SourceTestResult.Failed(SourceTestResult.Reason.HttpError, "HTTP ${response.code}")
+        }
+        // One working playlist is enough to call the source usable; the counts are totals.
+        if (okCount > 0) return SourceTestResult.Ok(live, movies, series)
+        return lastFailure ?: SourceTestResult.Failed(SourceTestResult.Reason.Other, null)
+    }
+
+    private fun testSingleM3u(url: String): SourceTestResult {
+        return try {
+            HttpClient.okHttp.newCall(Request.Builder().url(url).build()).execute().use { response ->
+                if (response.code == 401 || response.code == 403) {
+                    return@use SourceTestResult.Failed(SourceTestResult.Reason.BadLogin)
+                }
+                if (!response.isSuccessful) {
+                    return@use SourceTestResult.Failed(SourceTestResult.Reason.HttpError, "HTTP ${response.code}")
+                }
+                val channels = response.body?.charStream()?.buffered()?.useLines { M3uParser.parse(it) }.orEmpty()
+                if (channels.isEmpty()) return@use SourceTestResult.Failed(SourceTestResult.Reason.NotAPlaylist)
+                SourceTestResult.Ok(
+                    live = channels.count { it.type == ContentType.TV },
+                    movies = channels.count { it.type == ContentType.MOVIE },
+                    series = channels.count { it.type == ContentType.SERIES },
+                )
             }
-            val channels = response.body?.charStream()?.buffered()?.useLines { M3uParser.parse(it) }.orEmpty()
-            if (channels.isEmpty()) return SourceTestResult.Failed(SourceTestResult.Reason.NotAPlaylist)
-            return SourceTestResult.Ok(
-                live = channels.count { it.type == ContentType.TV },
-                movies = channels.count { it.type == ContentType.MOVIE },
-                series = channels.count { it.type == ContentType.SERIES },
-            )
+        } catch (e: UnknownHostException) {
+            SourceTestResult.Failed(SourceTestResult.Reason.HostUnreachable, e.message)
+        } catch (e: ConnectException) {
+            SourceTestResult.Failed(SourceTestResult.Reason.HostUnreachable, e.message)
+        } catch (e: SocketTimeoutException) {
+            SourceTestResult.Failed(SourceTestResult.Reason.Timeout, e.message)
+        } catch (e: IOException) {
+            SourceTestResult.Failed(SourceTestResult.Reason.Other, e.message)
         }
     }
 

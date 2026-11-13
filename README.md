@@ -18,11 +18,12 @@ device with API 29 or higher.
 ## Features
 
 ### Indian Channels Ready Out of the Box
-- **Default playlist**: Pre-filled with iptv-org's curated India streams (`in.m3u`)
+- **Default playlist**: pre-filled with iptv-org's India list (`countries/in.m3u`, ~220 KB) — just press **Save** in the wizard
 - **100+ Indian channels** across news, entertainment, sports, movies, music, kids, and regional languages
 - Works immediately on first launch — just tap "Save" in the wizard
 
 ### Sources
+- **Multiple playlists at once** — add as many M3U URLs as you like; every channel is merged into one catalogue. Ids from the first playlist stay stable, so favourites survive; a clash in a later playlist gets a `@s<index>` suffix
 - **M3U / M3U8** playlists (extended format with `tvg-*`, `group-title`, and **`#EXTVLCOPT`** custom headers)
 - **Xtream Codes** accounts (live, VOD, series) via a typed Retrofit client
 - **Custom HTTP headers** per channel: `#EXTVLCOPT:http-user-agent=...` and `#EXTVLCOPT:http-referrer=...` — essential for providers that require specific User-Agent or Referrer
@@ -32,6 +33,8 @@ device with API 29 or higher.
 
 ### Live TV
 - Category rails and an "All channels" grid
+- **Now-on progress** — every live card shows the current programme plus a thin bar for how far through it is
+- **HD / NEW badges** on cards so quality and freshly-added channels are visible at a glance
 - D-pad navigation, Play/Pause, Channel Up/Down, numeric channel entry
 - Audio track and subtitle selection, with adjustable subtitle delay
 - Stream stats overlay (resolution, bitrate, codec, buffer, dropped frames)
@@ -41,6 +44,7 @@ device with API 29 or higher.
 - Dedicated detail screens for movies and for series (seasons → episodes)
 - Resume playback per profile, with a "Continue watching" rail on the home screen
 - "My list" favourites and a "Related" rail on detail pages
+- **Watchlist** ("save for later") per profile, separate from favourites — add from any card's context menu or a detail screen, with its own home rail
 - Recent-search history and on-screen voice input (where the device supports it)
 
 ### Profiles
@@ -107,7 +111,7 @@ Without a token the app behaves identically except TMDB-powered rails and artwor
 
 ## First run
 
-On first launch a welcome wizard opens with the **Indian IPTV playlist pre-filled** (iptv-org's `in.m3u`). Just press **Save** to start watching Indian channels immediately.
+On first launch a welcome wizard opens with **iptv-org's India playlist pre-filled** (`countries/in.m3u`). Just press **Save** to start watching Indian channels immediately, then add more playlist URLs under Settings → Set Source → **Add playlist** (sports, movies, regional…). All of them merge into one catalogue.
 
 Useful tips:
 
@@ -190,7 +194,7 @@ Unit tests live under `app/src/test/`. The M3U parser has the most coverage; the
 - **Cleartext HTTP is enabled app-wide** because many IPTV providers still serve plain HTTP. See [`network_security_config.xml`](app/src/main/res/xml/network_security_config.xml).
 - **Compose for TV is on `1.0.0-alpha10`.** A known focus-search crash inside the episode list is swallowed in `MainActivity.dispatchKeyEvent`; it goes away when the Compose BOM can be bumped.
 - **TMDB matching is best-effort** based on title and year; uncommon releases may stay without artwork.
-- **No DRM, no catch-up, no PVR, no Chromecast.** These are deliberately out of scope.
+- **No DRM.** Providers don't serve DRM streams over M3U/Xtream. Catch-up is supported on Xtream sources; there is no PVR and no Chromecast.
 
 ## Contributing
 

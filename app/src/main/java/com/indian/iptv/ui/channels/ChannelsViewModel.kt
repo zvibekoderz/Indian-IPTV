@@ -70,8 +70,15 @@ data class ChannelsUiState(
     val lastRefreshAtMs: Long = 0L,
     val lastWatchedId: String? = null,
     val favoriteIds: Set<String> = emptySet(),
+    /** Ids the user saved in the "Watchlist" (per profile). */
+    val watchlistIds: Set<String> = emptySet(),
     /** Map of EPG channel key (tvg-id) → currently-airing programme title. */
     val nowPlayingByEpgId: Map<String, String> = emptyMap(),
+    /**
+     * EPG channel key → fraction (0..1) of the currently-airing programme that has elapsed.
+     * Drives the thin "how far into the show" bar on live-TV cards.
+     */
+    val epgProgressByEpgId: Map<String, Float> = emptyMap(),
     /**
      * Movies AND series episodes the user has started but not finished, sorted by most
      * recently updated. Episodes are represented as Channel objects with id prefixed
@@ -99,6 +106,8 @@ data class ChannelsUiState(
     val popularMovies: List<Channel> = emptyList(),
     /** "Nieuw in je catalogus" — items added in the past 14 days (Phase 6). */
     val recentlyAdded: List<Channel> = emptyList(),
+    /** Ids from [recentlyAdded]; lets cards draw a "new" badge without rescanning the list. */
+    val newlyAddedIds: Set<String> = emptySet(),
     val managingFavorites: Boolean = false,
     val recentSearches: List<String> = emptyList(),
     /** Hero trailers autoplay (Instellingen → Weergave). */
@@ -138,6 +147,7 @@ data class ChannelsUiState(
     companion object {
         const val UNCATEGORIZED = "Other"
         const val MY_LIST = "My List"
+        const val WATCHLIST = "Watchlist"
         const val FAVORITES = "Favorites"
         const val CONTINUE_WATCHING = "Continue Watching"
         const val POPULAR_NOW = "Popular Now"
@@ -241,6 +251,7 @@ private object ChannelsDerivations {
         continueWatching: List<Channel>,
         popularSeries: List<Channel>,
         popularMovies: List<Channel>,
+        watchlistIds: Set<String> = emptySet(),
     ): List<Rail> {
         if (channels.isEmpty()) return emptyList()
         return buildList {
@@ -267,6 +278,14 @@ private object ChannelsDerivations {
                 if (favs.isNotEmpty()) {
                     val title = if (selectedType == ContentType.TV) ChannelsUiState.FAVORITES else ChannelsUiState.MY_LIST
                     add(Rail(title, favs.take(ChannelsUiState.MAX_PER_RAIL)))
+                }
+            }
+            // "Watchlist" is separate from favourites: a save-for-later queue that keeps
+            // the curated list short. Only meaningful for VOD — TV has favourites already.
+            if (selectedType != ContentType.TV && watchlistIds.isNotEmpty()) {
+                val saved = channels.filter { it.id in watchlistIds }
+                if (saved.isNotEmpty()) {
+                    add(Rail(ChannelsUiState.WATCHLIST, saved.take(ChannelsUiState.MAX_PER_RAIL)))
                 }
             }
             val grouped = channels.groupBy { it.groupTitle ?: ChannelsUiState.UNCATEGORIZED }
@@ -450,7 +469,14 @@ class ChannelsViewModel : ViewModel() {
             .flatMapLatest { type -> dao.observeRecentlyAdded(type = type.name, cutoff = cutoff, limit = 30) }
             .map { rows -> AdultContent.filterChannels(rows.map { it.toDomain() }, app.kidsMode.value) { it.groupTitle } }
             .flowOn(Dispatchers.Default)
-            .onEach { items -> _state.update { it.copy(recentlyAdded = items) } }
+            .onEach { items ->
+                _state.update {
+                    it.copy(
+                        recentlyAdded = items,
+                        newlyAddedIds = items.mapTo(HashSet()) { ch -> ch.id },
+                    )
+                }
+            }
             .launchIn(viewModelScope)
 
         // Global search over every type, accent-insensitive. The index is built lazily on the
@@ -473,6 +499,13 @@ class ChannelsViewModel : ViewModel() {
             // Insertion-ordered so the favourites rail follows the user's own order.
             .map { LinkedHashSet(it) }
             .onEach { ids -> _state.update { it.copy(favoriteIds = ids) } }
+            .launchIn(viewModelScope)
+
+        // Watchlist ("save for later") is per-profile, same pattern as favourites.
+        activeProfileIdFlow
+            .flatMapLatest { dao.observeWatchlistIds(it) }
+            .map { it.toSet() }
+            .onEach { ids -> _state.update { it.copy(watchlistIds = ids) } }
             .launchIn(viewModelScope)
 
         activeProfileIdFlow
@@ -527,10 +560,22 @@ class ChannelsViewModel : ViewModel() {
             }
         }
         nowTicker
-            .flatMapLatest { now -> dao.observeNowPlaying(now) }
-            .map { list -> list.associate { it.channelKey to it.title } }
+            .flatMapLatest { now ->
+                dao.observeNowPlaying(now).map { programmes ->
+                    val titles = programmes.associate { it.channelKey to it.title }
+                    val fractions = programmes.associate { p ->
+                        val span = (p.stopMs - p.startMs).coerceAtLeast(1L)
+                        p.channelKey to ((now - p.startMs).toFloat() / span).coerceIn(0f, 1f)
+                    }
+                    titles to fractions
+                }
+            }
             .flowOn(Dispatchers.Default)
-            .onEach { map -> _state.update { it.copy(nowPlayingByEpgId = map) } }
+            .onEach { (titles, fractions) ->
+                _state.update {
+                    it.copy(nowPlayingByEpgId = titles, epgProgressByEpgId = fractions)
+                }
+            }
             .launchIn(viewModelScope)
 
         dao.observeChannelCount()
@@ -620,6 +665,7 @@ class ChannelsViewModel : ViewModel() {
                     lastWatchedId = s.lastWatchedId,
                     selectedLanguage = s.selectedLanguage,
                     selectedGenre = s.selectedGenre,
+                    watchlistIds = s.watchlistIds,
                 )
             }
             .distinctUntilChanged()
@@ -648,6 +694,7 @@ class ChannelsViewModel : ViewModel() {
                         inputs.continueWatching,
                         inputs.popularSeries,
                         inputs.popularMovies,
+                        inputs.watchlistIds,
                     ),
                     filteredChannels = ChannelsDerivations.filterByLanguageAndGenre(
                         inputs.channels,
@@ -771,6 +818,16 @@ class ChannelsViewModel : ViewModel() {
         }
     }
 
+    /** Save/remove a VOD item in the per-profile "Watchlist" (separate from favourites). */
+    fun toggleWatchlist(channelId: String) {
+        val isSaved = channelId in _state.value.watchlistIds
+        val profileId = activeProfileIdFlow.value
+        viewModelScope.launch {
+            if (isSaved) dao.removeWatchlist(profileId, channelId)
+            else dao.addWatchlist(profileId, channelId)
+        }
+    }
+
     fun setSelectedLanguage(language: String?) {
         if (_state.value.selectedLanguage == language) return
         _state.update { it.copy(selectedLanguage = language) }
@@ -886,6 +943,7 @@ private data class DerivationInputs(
     val lastWatchedId: String?,
     val selectedLanguage: String?,
     val selectedGenre: String?,
+    val watchlistIds: Set<String>,
 )
 
 private data class DerivedFields(

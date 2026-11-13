@@ -33,7 +33,7 @@ abstract class IptvDatabase : RoomDatabase() {
 
         /** The built-in profile every install starts with. Always present; cannot be deleted. */
         const val DEFAULT_PROFILE_ID = "default"
-        const val DEFAULT_PROFILE_NAME = "Hoofdprofiel"
+        const val DEFAULT_PROFILE_NAME = "Main Profile"
         // Pleasant accent tint for the default avatar; users can pick their own for new profiles.
         const val DEFAULT_PROFILE_COLOR_ARGB: Int = 0xFFE53935.toInt()
 
