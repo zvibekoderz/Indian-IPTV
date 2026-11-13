@@ -236,7 +236,20 @@ class PlayerActivity : ComponentActivity() {
                         onSelectChannelGroup = ::selectChannelGroup,
                         onZapFromList = ::zapFromList,
                         onPlayerViewReady = { view -> playerViewRef = view },
-                        onSelectAspect = { aspectMode = it },
+                        onSelectAspect = { mode ->
+                            if (aspectMode != mode) {
+                                aspectMode = mode
+                                showToast(
+                                    getString(
+                                        when (mode) {
+                                            AspectMode.FIT -> R.string.player_aspect_fit
+                                            AspectMode.FILL -> R.string.player_aspect_fill
+                                            AspectMode.ZOOM -> R.string.player_aspect_zoom
+                                        },
+                                    ),
+                                )
+                            }
+                        },
                         onSelectAudio = ::applyAudioSelection,
                         onSelectSubtitle = ::applySubtitleSelection,
                         onChangeSubtitleDelay = ::setSubtitleDelay,
@@ -611,6 +624,12 @@ class PlayerActivity : ComponentActivity() {
             synchronized(cueQueue) { cueQueue.clear() }
             displayedCues = player?.currentCues?.cues.orEmpty()
         }
+        showToast(getString(R.string.player_toast_subtitle_delay, String.format("%+.1f", clamped / 1000.0)))
+    }
+
+    /** Brief confirmation of a player state change, so silent remote actions are visible. */
+    private fun showToast(text: String) {
+        android.widget.Toast.makeText(this, text, android.widget.Toast.LENGTH_SHORT).show()
     }
 
     private fun playChannel(index: Int, resumeMs: Long = 0L) {
@@ -1033,6 +1052,8 @@ class PlayerActivity : ComponentActivity() {
             .buildUpon()
             .setOverrideForType(override)
             .build()
+        val fmt = group.formats.getOrNull(trackIndex)
+        showToast(getString(R.string.player_toast_audio, fmt?.language ?: fmt?.label ?: "Audio"))
     }
 
     private fun applySubtitleSelection(trackIndex: Int?, groupIndex: Int?) {
@@ -1041,11 +1062,14 @@ class PlayerActivity : ComponentActivity() {
         if (trackIndex == null || groupIndex == null) {
             // "Uit" — wipe any override on subtitles.
             builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            showToast(getString(R.string.player_toast_subtitles_off))
         } else {
             val group = tracksSnapshot.subtitleGroups.getOrNull(groupIndex) ?: return
             builder
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
                 .setOverrideForType(TrackSelectionOverride(group.mediaGroup, trackIndex))
+            val fmt = group.formats.getOrNull(trackIndex)
+            showToast(getString(R.string.player_toast_subtitles, fmt?.language ?: fmt?.label ?: "Subtitle"))
         }
         p.trackSelectionParameters = builder.build()
     }

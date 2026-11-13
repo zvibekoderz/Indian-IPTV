@@ -116,6 +116,10 @@
     <string name="keyhint_menu_settings">MENU Settings</string>
     <string name="keyhint_ok_toggle_favorite">OK Toggle Favorite</string>
     <string name="keyhint_ok_long_menu">Hold OK Options</string>
+    <string name="player_toast_audio">Audio: %1$s</string>
+    <string name="player_toast_subtitles">Subtitles: %1$s</string>
+    <string name="player_toast_subtitles_off">Subtitles off</string>
+    <string name="player_toast_subtitle_delay">Subtitle delay %1$s s</string>
     <string name="keyhint_back_exit">BACK Back</string>
     <string name="keyhint_info_channel">INFO Channel Info</string>
     <string name="keyhint_num_channel">0-9 Channel Nowmber</string>
