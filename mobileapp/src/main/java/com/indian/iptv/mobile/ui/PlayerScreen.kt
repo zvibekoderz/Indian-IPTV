@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -55,18 +57,20 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.indian.iptv.mobile.data.Channel
 import com.indian.iptv.mobile.data.PlaylistFetcher
+import com.indian.iptv.mobile.data.Settings
 import kotlinx.coroutines.delay
 
 /**
  * Full-screen player, MX Player-style:
  *  - tap the video to show/hide the control bars
- *  - an explicit, labelled scale button (Fit / Fill / Zoom) in the controls
- *  - the detected video resolution is shown next to the scale mode, so a
- *    stream with broken aspect metadata is immediately visible
+ *  - three explicit scale buttons (Fit / Fill / Zoom); the active one is
+ *    highlighted and the choice is remembered across channels and sessions
+ *  - the detected video resolution (and SAR for anamorphic streams) is shown
+ *    in the control bar, so broken stream metadata is immediately visible
  *  - landscape + immersive while playing; system bars restored on exit
  */
 @Composable
-fun PlayerScreen(channel: Channel, onClose: () -> Unit) {
+fun PlayerScreen(channel: Channel, settings: Settings, onClose: () -> Unit) {
     val context = LocalContext.current
     val activity = context as? Activity
 
@@ -111,11 +115,14 @@ fun PlayerScreen(channel: Channel, onClose: () -> Unit) {
         "stretched to every edge (may look distorted)",
         "fills the screen (top & bottom cropped)",
     )
-    var scaleIndex by remember { mutableIntStateOf(0) }
+    var scaleIndex by remember { mutableIntStateOf(settings.scaleMode) }
+    var pixelRatio by remember { mutableStateOf(1f) }
 
-    // Brief explanation of the current scale mode — on open and on change.
+    // Persist the choice and briefly explain the current scale mode — on open
+    // and on change.
     var modeHint by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(scaleIndex) {
+        settings.scaleMode = scaleIndex
         modeHint = scaleLabels[scaleIndex] + " — " + scaleHints[scaleIndex]
         delay(1400)
         modeHint = null
@@ -158,6 +165,7 @@ fun PlayerScreen(channel: Channel, onClose: () -> Unit) {
             }
 
             override fun onVideoSizeChanged(videoSize: VideoSize) {
+                pixelRatio = videoSize.pixelWidthHeightRatio
                 videoSizeText =
                     if (videoSize.width > 0 && videoSize.height > 0) {
                         "${videoSize.width}×${videoSize.height}"
@@ -262,24 +270,49 @@ fun PlayerScreen(channel: Channel, onClose: () -> Unit) {
                 }
             }
 
-            // Bottom bar: scale button (with resolution readout) + play/pause.
+            // Bottom bar: explicit scale buttons (active highlighted),
+            // resolution/SAR readout, and play/pause.
             Row(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .background(Color(0x66000000))
-                    .padding(horizontal = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    .padding(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(0.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = { scaleIndex = (scaleIndex + 1) % scaleModes.size }) {
-                    Text(
-                        if (videoSizeText.isEmpty()) scaleLabels[scaleIndex]
-                        else "${scaleLabels[scaleIndex]} • $videoSizeText",
-                        color = Color.White,
-                    )
+                scaleLabels.forEachIndexed { index, label ->
+                    if (index == scaleIndex) {
+                        Button(
+                            onClick = { scaleIndex = index },
+                            contentPadding = PaddingValues(horizontal = 12.dp),
+                            modifier = Modifier.height(40.dp),
+                        ) {
+                            Text(label)
+                        }
+                    } else {
+                        TextButton(onClick = { scaleIndex = index }) {
+                            Text(label, color = Color(0xFFB3B3BC))
+                        }
+                    }
                 }
                 Spacer(Modifier.weight(1f))
+                Text(
+                    text = buildString {
+                        if (videoSizeText.isNotEmpty()) append(videoSizeText)
+                        if (pixelRatio != 1f) {
+                            if (isNotEmpty()) append(" ")
+                            append("SAR %.2f".format(pixelRatio))
+                        }
+                    },
+                    color = Color(0xFFB3B3BC),
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 8.dp),
+                )
                 TextButton(onClick = { player.playWhenReady = !player.playWhenReady }) {
                     Text(if (isPlaying) "Pause" else "Play", color = Color.White)
                 }

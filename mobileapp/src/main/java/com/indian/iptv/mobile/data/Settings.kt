@@ -31,6 +31,13 @@ class Settings(context: Context) {
             prefs.edit().putStringSet(KEY_FAVOURITES, value).apply()
         }
 
+    /** Preferred player scale mode: 0 = Fit, 1 = Fill, 2 = Zoom. */
+    var scaleMode: Int
+        get() = prefs.getInt(KEY_SCALE_MODE, 0).coerceIn(0, 2)
+        set(value) {
+            prefs.edit().putInt(KEY_SCALE_MODE, value.coerceIn(0, 2)).apply()
+        }
+
     fun resetUrls() {
         prefs.edit().remove(KEY_URLS).apply()
     }
@@ -39,5 +46,6 @@ class Settings(context: Context) {
         const val DEFAULT_URL = "https://iptv-org.github.io/iptv/countries/in.m3u"
         private const val KEY_URLS = "m3u_urls"
         private const val KEY_FAVOURITES = "favourite_urls"
+        private const val KEY_SCALE_MODE = "scale_mode"
     }
 }

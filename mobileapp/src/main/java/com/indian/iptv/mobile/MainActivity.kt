@@ -106,6 +106,7 @@ private fun AppRoot() {
 
         is Screen.Player -> PlayerScreen(
             channel = current.channel,
+            settings = settings,
             onClose = { screen = Screen.Channels },
         )
     }
