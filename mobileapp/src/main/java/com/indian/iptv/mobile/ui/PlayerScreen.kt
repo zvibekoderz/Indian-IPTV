@@ -4,18 +4,23 @@ import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -29,10 +34,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
@@ -41,6 +46,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
@@ -52,9 +58,12 @@ import com.indian.iptv.mobile.data.PlaylistFetcher
 import kotlinx.coroutines.delay
 
 /**
- * Full-screen player. Locks to sensor landscape while visible, hides the
- * system bars (immersive mode — swipe to reveal) and lets the user cycle the
- * aspect-ratio mode: Fit (letterbox) / Fill (stretch) / Zoom (crop).
+ * Full-screen player, MX Player-style:
+ *  - tap the video to show/hide the control bars
+ *  - an explicit, labelled scale button (Fit / Fill / Zoom) in the controls
+ *  - the detected video resolution is shown next to the scale mode, so a
+ *    stream with broken aspect metadata is immediately visible
+ *  - landscape + immersive while playing; system bars restored on exit
  */
 @Composable
 fun PlayerScreen(channel: Channel, onClose: () -> Unit) {
@@ -69,8 +78,6 @@ fun PlayerScreen(channel: Channel, onClose: () -> Unit) {
         val previousOrientation = activity?.requestedOrientation
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         if (window != null) {
-            // Let the video extend edge-to-edge, including around the camera
-            // cutout, so no hardware area reflows the picture.
             window.attributes = window.attributes.apply {
                 layoutInDisplayCutoutMode =
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
@@ -92,25 +99,24 @@ fun PlayerScreen(channel: Channel, onClose: () -> Unit) {
         }
     }
 
-    // Aspect-ratio modes, cycled with the on-screen toggle.
-    val resizeModes = listOf(
+    // Scale modes, cycled from the control bar.
+    val scaleModes = listOf(
         AspectRatioFrameLayout.RESIZE_MODE_FIT,
         AspectRatioFrameLayout.RESIZE_MODE_FILL,
         AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
     )
-    val resizeLabels = listOf("Fit", "Fill", "Zoom")
-    val resizeHints = listOf(
-        "whole picture (small bars on the sides)",
+    val scaleLabels = listOf("Fit", "Fill", "Zoom")
+    val scaleHints = listOf(
+        "whole picture (bars on the sides)",
         "stretched to every edge (may look distorted)",
-        "fills the screen (top & bottom get cropped)",
+        "fills the screen (top & bottom cropped)",
     )
-    var resizeIndex by remember { mutableIntStateOf(0) }
+    var scaleIndex by remember { mutableIntStateOf(0) }
 
-    // Briefly explain the current aspect mode — on open and on every change —
-    // so cropping/stretching is never a surprise.
+    // Brief explanation of the current scale mode — on open and on change.
     var modeHint by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(resizeIndex) {
-        modeHint = resizeLabels[resizeIndex] + " — " + resizeHints[resizeIndex]
+    LaunchedEffect(scaleIndex) {
+        modeHint = scaleLabels[scaleIndex] + " — " + scaleHints[scaleIndex]
         delay(1400)
         modeHint = null
     }
@@ -137,12 +143,27 @@ fun PlayerScreen(channel: Channel, onClose: () -> Unit) {
 
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var buffering by remember { mutableStateOf(true) }
+    var isPlaying by remember { mutableStateOf(false) }
+    var videoSizeText by remember { mutableStateOf("") }
 
     val listener = remember(channel.url) {
         object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 buffering = state == Player.STATE_BUFFERING
                 if (state == Player.STATE_READY) errorMessage = null
+            }
+
+            override fun onIsPlayingChanged(playing: Boolean) {
+                isPlaying = playing
+            }
+
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                videoSizeText =
+                    if (videoSize.width > 0 && videoSize.height > 0) {
+                        "${videoSize.width}×${videoSize.height}"
+                    } else {
+                        ""
+                    }
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -165,49 +186,50 @@ fun PlayerScreen(channel: Channel, onClose: () -> Unit) {
         }
     }
 
+    // MX-style controls: shown on open / tap, auto-hidden after a few seconds.
+    var controlsVisible by remember { mutableStateOf(true) }
+    LaunchedEffect(controlsVisible, scaleIndex) {
+        if (controlsVisible && errorMessage == null) {
+            delay(4000)
+            controlsVisible = false
+        }
+    }
+
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color.Black),
-        contentAlignment = Alignment.Center,
+            .background(Color.Black)
+            // PlayerView has its own controller disabled, so plain taps reach
+            // this and toggle the control bars, exactly like MX Player.
+            .clickable { controlsVisible = !controlsVisible },
     ) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     this.player = player
-                    useController = true
-                    setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
+                    useController = false // our own Compose controls instead
+                    setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
                 }
             },
             update = { view ->
-                view.resizeMode = resizeModes[resizeIndex]
+                view.resizeMode = scaleModes[scaleIndex]
             },
         )
 
-        // Aspect-ratio toggle (bottom-right): Fit → Fill → Zoom.
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(Color(0x99000000))
-                .clickable { resizeIndex = (resizeIndex + 1) % resizeModes.size }
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-        ) {
-            Text(
-                resizeLabels[resizeIndex],
-                color = Color.White,
-                style = MaterialTheme.typography.labelLarge,
+        if (buffering && errorMessage == null) {
+            CircularProgressIndicator(
+                modifier = Modifier.align(Alignment.Center),
+                color = Color(0xFFEF6C00),
             )
         }
 
-        // Transient explanation of the current aspect mode.
+        // Transient explanation of the current scale mode.
         modeHint?.let { hint ->
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = 24.dp)
+                    .padding(top = if (controlsVisible) 72.dp else 24.dp)
                     .clip(RoundedCornerShape(24.dp))
                     .background(Color(0xB3000000))
                     .padding(horizontal = 16.dp, vertical = 10.dp),
@@ -216,14 +238,52 @@ fun PlayerScreen(channel: Channel, onClose: () -> Unit) {
             }
         }
 
-        val alpha by animateFloatAsState(if (buffering) 1f else 0f, tween(300), label = "buffer")
-        if (buffering && errorMessage == null) {
-            CircularProgressIndicator(
+        if (controlsVisible) {
+            // Top bar: channel name + close.
+            Row(
                 modifier = Modifier
-                    .align(Alignment.Center)
-                    .alpha(alpha),
-                color = Color(0xFFEF6C00),
-            )
+                    .fillMaxWidth()
+                    .background(Color(0x66000000))
+                    .padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    channel.name,
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 12.dp),
+                )
+                IconButton(onClick = onClose) {
+                    Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White)
+                }
+            }
+
+            // Bottom bar: scale button (with resolution readout) + play/pause.
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(Color(0x66000000))
+                    .padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = { scaleIndex = (scaleIndex + 1) % scaleModes.size }) {
+                    Text(
+                        if (videoSizeText.isEmpty()) scaleLabels[scaleIndex]
+                        else "${scaleLabels[scaleIndex]} • $videoSizeText",
+                        color = Color.White,
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = { player.playWhenReady = !player.playWhenReady }) {
+                    Text(if (isPlaying) "Pause" else "Play", color = Color.White)
+                }
+            }
         }
 
         errorMessage?.let { message ->
