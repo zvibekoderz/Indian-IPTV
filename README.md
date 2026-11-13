@@ -1,5 +1,7 @@
 # Indian IPTV
 
+[![Android build](https://github.com/zvibekoderz/Indian-IPTV/actions/workflows/android-build.yml/badge.svg)](https://github.com/zvibekoderz/Indian-IPTV/actions/workflows/android-build.yml)
+
 A lightweight, open-source IPTV player for Android TV 10+, built natively in
 Kotlin with Compose for TV and Media3/ExoPlayer. Pre-loaded with **Indian
 channels** from the [iptv-org](https://github.com/iptv-org/iptv) curated
