@@ -20,8 +20,8 @@ android {
         // Android 9 (API 28) floor, per project requirement.
         minSdk = 28
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.1.3"
+        versionCode = 6
+        versionName = "1.1.4"
     }
 
     buildTypes {
@@ -40,6 +40,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         // Compose compiler matched to the project's Kotlin 1.9.24.

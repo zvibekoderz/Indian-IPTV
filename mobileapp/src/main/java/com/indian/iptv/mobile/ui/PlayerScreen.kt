@@ -86,6 +86,8 @@ fun PlayerScreen(channel: Channel, settings: Settings, onClose: () -> Unit) {
                 layoutInDisplayCutoutMode =
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
+            // Sledgehammer for OEMs that ignore the insets controller.
+            window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
             WindowCompat.setDecorFitsSystemWindows(window, false)
             val controller = WindowInsetsControllerCompat(window, window.decorView)
             controller.systemBarsBehavior =
@@ -96,6 +98,7 @@ fun PlayerScreen(channel: Channel, settings: Settings, onClose: () -> Unit) {
             activity?.requestedOrientation =
                 previousOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             if (window != null) {
+                window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
                 WindowCompat.setDecorFitsSystemWindows(window, true)
                 WindowInsetsControllerCompat(window, window.decorView)
                     .show(WindowInsetsCompat.Type.systemBars())
@@ -118,14 +121,24 @@ fun PlayerScreen(channel: Channel, settings: Settings, onClose: () -> Unit) {
     var scaleIndex by remember { mutableIntStateOf(settings.scaleMode) }
     var pixelRatio by remember { mutableStateOf(1f) }
 
-    // Persist the choice and briefly explain the current scale mode — on open
-    // and on change.
+    // Selecting a scale mode persists it and briefly explains the trade-off;
+    // nothing appears when playback merely starts.
     var modeHint by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(scaleIndex) {
         settings.scaleMode = scaleIndex
-        modeHint = scaleLabels[scaleIndex] + " — " + scaleHints[scaleIndex]
-        delay(1400)
-        modeHint = null
+    }
+    LaunchedEffect(modeHint) {
+        if (modeHint != null) {
+            delay(1400)
+            modeHint = null
+        }
+    }
+
+    fun selectScale(index: Int) {
+        if (index == scaleIndex) return
+        scaleIndex = index
+        settings.scaleMode = index
+        modeHint = scaleLabels[index] + " — " + scaleHints[index]
     }
 
     val player = remember(channel.url) {
@@ -194,11 +207,12 @@ fun PlayerScreen(channel: Channel, settings: Settings, onClose: () -> Unit) {
         }
     }
 
-    // MX-style controls: shown on open / tap, auto-hidden after a few seconds.
-    var controlsVisible by remember { mutableStateOf(true) }
+    // MX-style controls: hidden while playback starts — the video is clean
+    // until the user taps; they auto-hide a few seconds after any appearance.
+    var controlsVisible by remember { mutableStateOf(false) }
     LaunchedEffect(controlsVisible, scaleIndex) {
         if (controlsVisible && errorMessage == null) {
-            delay(4000)
+            delay(3000)
             controlsVisible = false
         }
     }
@@ -284,14 +298,14 @@ fun PlayerScreen(channel: Channel, settings: Settings, onClose: () -> Unit) {
                 scaleLabels.forEachIndexed { index, label ->
                     if (index == scaleIndex) {
                         Button(
-                            onClick = { scaleIndex = index },
+                            onClick = { selectScale(index) },
                             contentPadding = PaddingValues(horizontal = 12.dp),
                             modifier = Modifier.height(40.dp),
                         ) {
                             Text(label)
                         }
                     } else {
-                        TextButton(onClick = { scaleIndex = index }) {
+                        TextButton(onClick = { selectScale(index) }) {
                             Text(label, color = Color(0xFFB3B3BC))
                         }
                     }

@@ -11,6 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.view.WindowCompat
 import com.indian.iptv.mobile.data.Channel
 import com.indian.iptv.mobile.data.M3uParser
 import com.indian.iptv.mobile.data.PlaylistFetcher
@@ -29,6 +30,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Content draws edge-to-edge from the very first frame on every
+        // screen — no title bar, no inset band. The player additionally
+        // hides the system bars entirely while visible.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent {
             IptvTheme { AppRoot() }
         }

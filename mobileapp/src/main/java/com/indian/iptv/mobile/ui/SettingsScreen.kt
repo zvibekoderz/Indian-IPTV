@@ -95,11 +95,17 @@ fun SettingsScreen(
             }
             Spacer(Modifier.height(24.dp))
             Text(
-                "Add as many playlists as you like — every line is one M3U source. " +
+                "Tip: add as many playlists as you like — every line is one M3U source. " +
                     "They are all fetched and combined into a single channel list; " +
                     "duplicate channels are removed automatically. Favourites are kept " +
                     "even when a playlist changes.",
                 style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(24.dp))
+            Text(
+                "IPTV Mobile v${com.indian.iptv.mobile.BuildConfig.VERSION_NAME}",
+                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
