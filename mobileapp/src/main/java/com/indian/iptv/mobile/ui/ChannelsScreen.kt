@@ -19,11 +19,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -57,12 +59,15 @@ fun ChannelsScreen(
     channels: List<Channel>?,
     loading: Boolean,
     error: String?,
+    favourites: Set<String>,
+    onToggleFavourite: (Channel) -> Unit,
     onOpenChannel: (Channel) -> Unit,
     onRefresh: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var selectedCategory by rememberSaveable { mutableStateOf("") }
+    var showFavourites by rememberSaveable { mutableStateOf(false) }
 
     val categories = remember(channels) {
         channels?.mapNotNull { it.category }.orEmpty()
@@ -73,6 +78,7 @@ fun ChannelsScreen(
     val visible = channels
         .orEmpty()
         .asSequence()
+        .filter { !showFavourites || it.url in favourites }
         .filter { selectedCategory.isEmpty() || it.category == selectedCategory }
         .filter { query.isBlank() || it.name.contains(query.trim(), ignoreCase = true) }
         .toList()
@@ -112,6 +118,20 @@ fun ChannelsScreen(
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    item {
+                        FilterChip(
+                            selected = showFavourites,
+                            onClick = { showFavourites = !showFavourites },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Filled.Star,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            },
+                            label = { Text("Favourites") },
+                        )
+                    }
                     item {
                         FilterChip(
                             selected = selectedCategory.isEmpty(),
@@ -168,7 +188,7 @@ fun ChannelsScreen(
                         }
                     }
                     items(visible, key = { it.url + it.name }) { channel ->
-                        ChannelRow(channel, onOpenChannel)
+                        ChannelRow(channel, favourites, onToggleFavourite, onOpenChannel)
                     }
                 }
             }
@@ -177,7 +197,12 @@ fun ChannelsScreen(
 }
 
 @Composable
-private fun ChannelRow(channel: Channel, onOpen: (Channel) -> Unit) {
+private fun ChannelRow(
+    channel: Channel,
+    favourites: Set<String>,
+    onToggleFavourite: (Channel) -> Unit,
+    onOpen: (Channel) -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -223,6 +248,14 @@ private fun ChannelRow(channel: Channel, onOpen: (Channel) -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+        }
+        IconButton(onClick = { onToggleFavourite(channel) }) {
+            val isFavourite = channel.url in favourites
+            Icon(
+                imageVector = Icons.Filled.Star,
+                contentDescription = if (isFavourite) "Remove from favourites" else "Add to favourites",
+                tint = if (isFavourite) Color(0xFFFFC107) else Color(0xFF6F6F78),
+            )
         }
     }
 }

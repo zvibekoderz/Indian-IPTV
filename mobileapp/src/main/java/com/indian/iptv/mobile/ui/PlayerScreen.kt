@@ -6,12 +6,14 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -20,16 +22,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -37,13 +44,15 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.indian.iptv.mobile.data.Channel
 import com.indian.iptv.mobile.data.PlaylistFetcher
 
 /**
- * Full-screen player. Locks to sensor landscape while visible (video's natural
- * orientation on a phone) and restores normal orientation on exit.
+ * Full-screen player. Locks to sensor landscape while visible, hides the
+ * system bars (immersive mode — swipe to reveal) and lets the user cycle the
+ * aspect-ratio mode: Fit (letterbox) / Fill (stretch) / Zoom (crop).
  */
 @Composable
 fun PlayerScreen(channel: Channel, onClose: () -> Unit) {
@@ -52,15 +61,37 @@ fun PlayerScreen(channel: Channel, onClose: () -> Unit) {
 
     BackHandler { onClose() }
 
-    // Landscape while playing, portrait-capable again when leaving.
-    DisposableEffect(Unit) {
-        val previous = activity?.requestedOrientation
+    // Landscape + immersive full screen while playing; restore on exit.
+    DisposableEffect(activity) {
+        val window = activity?.window
+        val previousOrientation = activity?.requestedOrientation
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        if (window != null) {
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            val controller = WindowInsetsControllerCompat(window, window.decorView)
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        }
         onDispose {
             activity?.requestedOrientation =
-                previous ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                previousOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            if (window != null) {
+                WindowCompat.setDecorFitsSystemWindows(window, true)
+                WindowInsetsControllerCompat(window, window.decorView)
+                    .show(WindowInsetsCompat.Type.systemBars())
+            }
         }
     }
+
+    // Aspect-ratio modes, cycled with the on-screen toggle.
+    val resizeModes = listOf(
+        AspectRatioFrameLayout.RESIZE_MODE_FIT,
+        AspectRatioFrameLayout.RESIZE_MODE_FILL,
+        AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+    )
+    val resizeLabels = listOf("Fit", "Fill", "Zoom")
+    var resizeIndex by remember { mutableIntStateOf(0) }
 
     val player = remember(channel.url) {
         val httpFactory = DefaultHttpDataSource.Factory()
@@ -127,7 +158,27 @@ fun PlayerScreen(channel: Channel, onClose: () -> Unit) {
                     setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
                 }
             },
+            update = { view ->
+                view.resizeMode = resizeModes[resizeIndex]
+            },
         )
+
+        // Aspect-ratio toggle (bottom-right): Fit → Fill → Zoom.
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color(0x99000000))
+                .clickable { resizeIndex = (resizeIndex + 1) % resizeModes.size }
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        ) {
+            Text(
+                resizeLabels[resizeIndex],
+                color = Color.White,
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
 
         val alpha by animateFloatAsState(if (buffering) 1f else 0f, tween(300), label = "buffer")
         if (buffering && errorMessage == null) {

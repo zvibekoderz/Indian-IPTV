@@ -30,8 +30,9 @@ import androidx.compose.ui.unit.dp
 import com.indian.iptv.mobile.data.Settings
 
 /**
- * Playlist settings: one URL field (prefilled with the India playlist) plus
- * save / reset actions. Standard touch text field — tap opens the keyboard.
+ * Playlist settings: one M3U URL per line (they are all fetched and merged),
+ * plus save / reset actions. Standard touch text field — tap opens the
+ * keyboard, Enter adds another line.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,7 +41,7 @@ fun SettingsScreen(
     onSave: () -> Unit,
     onBack: () -> Unit,
 ) {
-    var url by remember { mutableStateOf(settings.m3uUrl) }
+    var urls by remember { mutableStateOf(settings.m3uUrls.joinToString("\n")) }
 
     Scaffold(
         topBar = {
@@ -61,30 +62,32 @@ fun SettingsScreen(
                 .padding(padding)
                 .padding(16.dp),
         ) {
-            Text("Playlist URL (M3U)", style = MaterialTheme.typography.titleSmall)
+            Text("Playlist URLs (M3U, one per line)", style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
-                value = url,
-                onValueChange = { url = it },
+                value = urls,
+                onValueChange = { urls = it },
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
+                minLines = 3,
+                maxLines = 8,
+                placeholder = { Text("https://example.com/playlist.m3u") },
             )
             Spacer(Modifier.height(16.dp))
             Button(
                 onClick = {
-                    settings.m3uUrl = url
+                    settings.m3uUrls = urls.split("\n")
                     onSave()
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = url.isNotBlank(),
+                enabled = urls.isNotBlank(),
             ) {
                 Text("Save & reload channels")
             }
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
                 onClick = {
-                    settings.resetUrl()
-                    url = Settings.DEFAULT_URL
+                    settings.resetUrls()
+                    urls = Settings.DEFAULT_URL
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -92,8 +95,10 @@ fun SettingsScreen(
             }
             Spacer(Modifier.height(24.dp))
             Text(
-                "Tip: any public M3U playlist works here — e.g. a full " +
-                    "\"https://iptv-org.github.io/iptv/index.m3u\" or a country file.",
+                "Add as many playlists as you like — every line is one M3U source. " +
+                    "They are all fetched and combined into a single channel list; " +
+                    "duplicate channels are removed automatically. Favourites are kept " +
+                    "even when a playlist changes.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

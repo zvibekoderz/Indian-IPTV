@@ -23,9 +23,11 @@ Gradle modules with separate codebases:
 
 Build them with `./gradlew :app:assembleDebug` and `./gradlew :mobileapp:assembleDebug`.
 Both can be installed on the same device. The phone app has its own simple
-architecture: one Compose activity (search, category chips, channel list),
-a fresh M3U parser, a file-cached playlist fetcher with a DNS-over-HTTPS
-fallback, and an ExoPlayer/Media3 player with HLS support.
+architecture: one Compose activity (search, category chips, channel list with
+favourites), a fresh M3U parser, a file-cached playlist fetcher that merges
+**multiple M3U sources** (one URL per line in Settings) with a
+DNS-over-HTTPS fallback, and an ExoPlayer/Media3 player with HLS support,
+immersive full-screen playback and a Fit/Fill/Zoom aspect-ratio toggle.
 
 > **Disclaimers.** This project is an independent community app, **not
 > affiliated with or endorsed by Formuler**. "Formuler" and "Z10 Pro Max" are

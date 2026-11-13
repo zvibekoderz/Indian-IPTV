@@ -3,11 +3,14 @@ package com.indian.iptv.mobile
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
 import com.indian.iptv.mobile.data.Channel
 import com.indian.iptv.mobile.data.M3uParser
 import com.indian.iptv.mobile.data.PlaylistFetcher
@@ -38,10 +41,10 @@ private sealed interface Screen {
     data class Player(val channel: Channel) : Screen
 }
 
-@androidx.compose.runtime.Composable
+@Composable
 private fun AppRoot() {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     val settings = remember { Settings(context) }
     val fetcher = remember { PlaylistFetcher(context) }
@@ -51,19 +54,26 @@ private fun AppRoot() {
     var channels by remember { mutableStateOf<List<Channel>?>(null) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var favourites by remember { mutableStateOf(settings.favourites) }
+
+    fun toggleFavourite(channel: Channel) {
+        val next = if (channel.url in favourites) favourites - channel.url else favourites + channel.url
+        favourites = next
+        settings.favourites = next
+    }
 
     fun load(forceRefresh: Boolean) {
         scope.launch {
             loading = true
             error = null
-            when (val result = fetcher.fetch(settings.m3uUrl, forceRefresh)) {
-                is PlaylistFetcher.Result.Success ->
-                    channels = M3uParser.parse(result.text).ifEmpty {
-                        error = "No channels found in the playlist"
-                        null
-                    }
-                is PlaylistFetcher.Result.Failure ->
-                    error = result.message
+            val result = fetcher.fetch(settings.m3uUrls, forceRefresh)
+            channels = result.channels.ifEmpty { null }
+            if (result.channels.isEmpty()) {
+                error = if (result.failures.isEmpty()) {
+                    "No channels found in the playlists"
+                } else {
+                    "Couldn't load any playlist: " + result.failures.joinToString("; ")
+                }
             }
             loading = false
         }
@@ -77,6 +87,8 @@ private fun AppRoot() {
             channels = channels,
             loading = loading,
             error = error,
+            favourites = favourites,
+            onToggleFavourite = ::toggleFavourite,
             onOpenChannel = { screen = Screen.Player(it) },
             onRefresh = { load(forceRefresh = true) },
             onOpenSettings = { screen = Screen.Settings },

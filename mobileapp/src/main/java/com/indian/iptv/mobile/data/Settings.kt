@@ -10,16 +10,34 @@ class Settings(context: Context) {
 
     private val prefs = context.getSharedPreferences("iptv_mobile", Context.MODE_PRIVATE)
 
-    var m3uUrl: String
-        get() = prefs.getString(KEY_URL, DEFAULT_URL) ?: DEFAULT_URL
-        set(value) = prefs.edit().putString(KEY_URL, value.trim()).apply()
+    /** Playlist sources, newest first in the UI. One URL per entry. */
+    var m3uUrls: List<String>
+        get() = prefs.getString(KEY_URLS, null)
+            ?.lines()
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            ?.takeIf { it.isNotEmpty() }
+            ?: listOf(DEFAULT_URL)
+        set(value) {
+            prefs.edit()
+                .putString(KEY_URLS, value.map { it.trim() }.filter { it.isNotBlank() }.joinToString("\n"))
+                .apply()
+        }
 
-    fun resetUrl() {
-        prefs.edit().remove(KEY_URL).apply()
+    /** Favourited channel stream URLs. */
+    var favourites: Set<String>
+        get() = prefs.getStringSet(KEY_FAVOURITES, emptySet()).orEmpty()
+        set(value) {
+            prefs.edit().putStringSet(KEY_FAVOURITES, value).apply()
+        }
+
+    fun resetUrls() {
+        prefs.edit().remove(KEY_URLS).apply()
     }
 
     companion object {
         const val DEFAULT_URL = "https://iptv-org.github.io/iptv/countries/in.m3u"
-        private const val KEY_URL = "m3u_url"
+        private const val KEY_URLS = "m3u_urls"
+        private const val KEY_FAVOURITES = "favourite_urls"
     }
 }
