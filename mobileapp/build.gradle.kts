@@ -20,8 +20,8 @@ android {
         // Android 9 (API 28) floor, per project requirement.
         minSdk = 28
         targetSdk = 34
-        versionCode = 7
-        versionName = "1.1.5"
+        versionCode = 8
+        versionName = "1.2.0"
     }
 
     buildTypes {
@@ -70,4 +70,6 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.6.0")
 
     testImplementation("junit:junit:4.13.2")
+    // XML pull-parser implementation for the JVM unit tests (Android ships one).
+    testImplementation("net.sf.kxml:kxml2:2.3.0")
 }

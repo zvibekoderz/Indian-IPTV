@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -48,6 +50,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.indian.iptv.mobile.data.Channel
+import com.indian.iptv.mobile.data.Epg
 
 /**
  * Touch-first channel browser: search field, category chips and a tappable
@@ -64,6 +67,8 @@ fun ChannelsScreen(
     onOpenChannel: (Channel) -> Unit,
     onRefresh: () -> Unit,
     onOpenSettings: () -> Unit,
+    recent: List<Channel>,
+    nowNextOf: (Channel) -> Epg.NowNext?,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var selectedCategory by rememberSaveable { mutableStateOf("") }
@@ -178,6 +183,27 @@ fun ChannelsScreen(
                 }
 
                 else -> LazyColumn(Modifier.fillMaxSize()) {
+                    val showRecent = recent.isNotEmpty() &&
+                        query.isBlank() && selectedCategory.isEmpty() && !showFavourites
+                    if (showRecent) {
+                        item(key = "recent-header") {
+                            Text(
+                                "Recently watched",
+                                style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+                            )
+                        }
+                        item(key = "recent-row") {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                items(recent, key = { it.url + it.name }) { channel ->
+                                    RecentCard(channel, onOpenChannel)
+                                }
+                            }
+                        }
+                    }
                     if (visible.isEmpty()) {
                         item {
                             Text(
@@ -188,7 +214,7 @@ fun ChannelsScreen(
                         }
                     }
                     items(visible, key = { it.url + it.name }) { channel ->
-                        ChannelRow(channel, favourites, onToggleFavourite, onOpenChannel)
+                        ChannelRow(channel, favourites, onToggleFavourite, nowNextOf, onOpenChannel)
                     }
                 }
             }
@@ -201,6 +227,7 @@ private fun ChannelRow(
     channel: Channel,
     favourites: Set<String>,
     onToggleFavourite: (Channel) -> Unit,
+    nowNextOf: (Channel) -> Epg.NowNext?,
     onOpen: (Channel) -> Unit,
 ) {
     Row(
@@ -248,6 +275,15 @@ private fun ChannelRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            nowNextOf(channel)?.now?.let { now ->
+                Text(
+                    "Now: $now",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFEF6C00),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         IconButton(onClick = { onToggleFavourite(channel) }) {
             val isFavourite = channel.url in favourites
@@ -257,5 +293,43 @@ private fun ChannelRow(
                 tint = if (isFavourite) Color(0xFFFFC107) else Color(0xFF6F6F78),
             )
         }
+    }
+}
+
+/** Small card in the "Recently watched" row. */
+@Composable
+private fun RecentCard(channel: Channel, onOpen: (Channel) -> Unit) {
+    Column(
+        modifier = Modifier
+            .width(120.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF1C1C22))
+            .clickable { onOpen(channel) },
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(68.dp)
+                .background(Color(0xFF2A2A31)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (channel.logo != null) {
+                AsyncImage(
+                    model = channel.logo,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
+                )
+            } else {
+                Text(channel.name.take(1).uppercase(), color = Color(0xFFB3B3BC))
+            }
+        }
+        Text(
+            channel.name,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(8.dp),
+        )
     }
 }

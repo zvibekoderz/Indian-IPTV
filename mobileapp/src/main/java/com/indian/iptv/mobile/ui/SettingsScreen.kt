@@ -42,6 +42,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
 ) {
     var urls by remember { mutableStateOf(settings.m3uUrls.joinToString("\n")) }
+    var epgUrl by remember { mutableStateOf(settings.epgUrl) }
 
     Scaffold(
         topBar = {
@@ -73,9 +74,27 @@ fun SettingsScreen(
                 placeholder = { Text("https://example.com/playlist.m3u") },
             )
             Spacer(Modifier.height(16.dp))
+            Text("EPG URL (XMLTV, optional)", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = epgUrl,
+                onValueChange = { epgUrl = it },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 1,
+                maxLines = 3,
+                placeholder = { Text("https://example.com/guide.xml.gz") },
+            )
+            Text(
+                "For \"Now: …\" programme info under channels and in the player. " +
+                    "Any XMLTV guide works (plain or .xml.gz); leave blank to switch it off.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(16.dp))
             Button(
                 onClick = {
                     settings.m3uUrls = urls.split("\n")
+                    settings.epgUrl = epgUrl
                     onSave()
                 },
                 modifier = Modifier.fillMaxWidth(),

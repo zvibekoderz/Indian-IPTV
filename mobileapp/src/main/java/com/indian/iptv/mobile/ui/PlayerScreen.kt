@@ -1,11 +1,14 @@
 package com.indian.iptv.mobile.ui
 
 import android.app.Activity
+import android.content.Context
 import android.content.pm.ActivityInfo
+import android.media.AudioManager
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -56,9 +60,14 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.indian.iptv.mobile.data.Channel
+import com.indian.iptv.mobile.data.Epg
 import com.indian.iptv.mobile.data.PlaylistFetcher
 import com.indian.iptv.mobile.data.Settings
 import kotlinx.coroutines.delay
+import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
 /**
  * Full-screen player, MX Player-style:
@@ -67,10 +76,17 @@ import kotlinx.coroutines.delay
  *    highlighted and the choice is remembered across channels and sessions
  *  - the detected video resolution (and SAR for anamorphic streams) is shown
  *    in the control bar, so broken stream metadata is immediately visible
+ *  - MX-style swipe gestures: brightness (left half), volume (right half),
+ *    horizontal seek for VOD; double-tap play/pause; tap toggles the bars
  *  - landscape + immersive while playing; system bars restored on exit
  */
 @Composable
-fun PlayerScreen(channel: Channel, settings: Settings, onClose: () -> Unit) {
+fun PlayerScreen(
+    channel: Channel,
+    settings: Settings,
+    nowPlaying: Epg.NowNext?,
+    onClose: () -> Unit,
+) {
     val context = LocalContext.current
     val activity = context as? Activity
 
@@ -98,6 +114,10 @@ fun PlayerScreen(channel: Channel, settings: Settings, onClose: () -> Unit) {
             activity?.requestedOrientation =
                 previousOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             if (window != null) {
+                // Undo the brightness gesture's window-level override.
+                window.attributes = window.attributes.apply {
+                    screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                }
                 window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
                 WindowCompat.setDecorFitsSystemWindows(window, true)
                 WindowInsetsControllerCompat(window, window.decorView)
@@ -139,6 +159,20 @@ fun PlayerScreen(channel: Channel, settings: Settings, onClose: () -> Unit) {
         scaleIndex = index
         settings.scaleMode = index
         modeHint = scaleLabels[index] + " — " + scaleHints[index]
+    }
+
+    // MX-style swipe gestures: left half = brightness, right half = volume,
+    // horizontal = seek (only when the stream has a duration, i.e. VOD),
+    // double-tap = play/pause. A pill in the center shows what's happening.
+    val audioManager = remember {
+        context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    }
+    var gestureText by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(gestureText) {
+        if (gestureText != null) {
+            delay(1200)
+            gestureText = null
+        }
     }
 
     val player = remember(channel.url) {
@@ -221,9 +255,81 @@ fun PlayerScreen(channel: Channel, settings: Settings, onClose: () -> Unit) {
         Modifier
             .fillMaxSize()
             .background(Color.Black)
-            // PlayerView has its own controller disabled, so plain taps reach
-            // this and toggle the control bars, exactly like MX Player.
-            .clickable { controlsVisible = !controlsVisible },
+            // PlayerView has its own controller disabled, so taps reach these
+            // handlers: tap toggles the control bars, double-tap play/pause.
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { controlsVisible = !controlsVisible },
+                    onDoubleTap = {
+                        player.playWhenReady = !player.playWhenReady
+                        gestureText = if (player.playWhenReady) "Play" else "Pause"
+                    },
+                )
+            }
+            .pointerInput(Unit) {
+                var mode = 0 // 0 undecided · 1 brightness · 2 volume · 3 seek
+                var brightness = 0f
+                var volume = 0
+                var seekPosition = 0L
+                detectDragGestures(
+                    onDragStart = { _ ->
+                        mode = 0
+                        brightness = activity?.window?.attributes?.screenBrightness
+                            ?.takeIf { it >= 0f } ?: 0.5f
+                        volume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                        seekPosition = player.currentPosition
+                    },
+                    onDrag = { change, amount ->
+                        if (mode == 0) {
+                            // Decide once, from the first movement: horizontal
+                            // seeks when the stream has a duration (VOD);
+                            // otherwise vertical adjusts brightness (left) or
+                            // volume (right), decided by where the finger is.
+                            mode = if (abs(amount.x) > abs(amount.y)) {
+                                if (player.duration > 0) 3
+                                else if (change.position.x < size.width / 2f) 1 else 2
+                            } else if (change.position.x < size.width / 2f) {
+                                1
+                            } else {
+                                2
+                            }
+                        }
+                        when (mode) {
+                            1 -> {
+                                val window = activity?.window
+                                if (window != null) {
+                                    // Swipe up to brighten, down to dim.
+                                    brightness = (brightness - amount.y / size.height * 1.5f)
+                                        .coerceIn(0.01f, 1f)
+                                    window.attributes = window.attributes.apply {
+                                        screenBrightness = brightness
+                                    }
+                                    gestureText = "Brightness ${(brightness * 100).roundToInt()}%"
+                                }
+                            }
+                            2 -> {
+                                val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                                volume = (volume + (-amount.y / size.height * max * 1.5f).roundToInt())
+                                    .coerceIn(0, max)
+                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, volume, 0)
+                                gestureText = "Volume $volume/$max"
+                            }
+                            3 -> {
+                                val duration = player.duration
+                                if (duration > 0) {
+                                    seekPosition = (seekPosition + amount.x * duration / size.width)
+                                        .roundToLong()
+                                        .coerceIn(0L, duration - 1000)
+                                    player.seekTo(seekPosition)
+                                    gestureText =
+                                        "${formatTime(seekPosition)} / ${formatTime(duration)}"
+                                }
+                            }
+                        }
+                        change.consume()
+                    },
+                )
+            },
     ) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
@@ -260,8 +366,21 @@ fun PlayerScreen(channel: Channel, settings: Settings, onClose: () -> Unit) {
             }
         }
 
+        // Transient gesture feedback (brightness / volume / seek / play state).
+        gestureText?.let { text ->
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color(0xB3000000))
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+            ) {
+                Text(text, color = Color.White, style = MaterialTheme.typography.titleMedium)
+            }
+        }
+
         if (controlsVisible) {
-            // Top bar: channel name + close.
+            // Top bar: channel name (+ current programme) + close.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -269,16 +388,28 @@ fun PlayerScreen(channel: Channel, settings: Settings, onClose: () -> Unit) {
                     .padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    channel.name,
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                Column(
                     modifier = Modifier
                         .weight(1f)
-                        .padding(start = 12.dp),
-                )
+                        .padding(start = 12.dp, top = 8.dp, bottom = 8.dp),
+                ) {
+                    Text(
+                        channel.name,
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    nowPlaying?.now?.let { now ->
+                        Text(
+                            "Now: $now",
+                            color = Color(0xFFB3B3BC),
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
                 IconButton(onClick = onClose) {
                     Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White)
                 }
@@ -361,5 +492,18 @@ fun PlayerScreen(channel: Channel, settings: Settings, onClose: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+/** "1:23:45" / "12:34" style time for the seek gesture readout. */
+private fun formatTime(ms: Long): String {
+    val totalSeconds = ms / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return if (hours > 0) {
+        "%d:%02d:%02d".format(Locale.US, hours, minutes, seconds)
+    } else {
+        "%d:%02d".format(Locale.US, minutes, seconds)
     }
 }
