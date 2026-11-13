@@ -118,6 +118,7 @@ fun PlayerScreen(
                 window.attributes = window.attributes.apply {
                     screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
                 }
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
                 WindowCompat.setDecorFitsSystemWindows(window, true)
                 WindowInsetsControllerCompat(window, window.decorView)
@@ -199,6 +200,18 @@ fun PlayerScreen(
     var buffering by remember { mutableStateOf(true) }
     var isPlaying by remember { mutableStateOf(false) }
     var videoSizeText by remember { mutableStateOf("") }
+
+    // Keep the screen awake while the video plays; let it time out
+    // normally when paused (or errored), like a stock video player.
+    LaunchedEffect(isPlaying) {
+        activity?.window?.let { window ->
+            if (isPlaying) {
+                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            } else {
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
+    }
 
     val listener = remember(channel.url) {
         object : Player.Listener {
