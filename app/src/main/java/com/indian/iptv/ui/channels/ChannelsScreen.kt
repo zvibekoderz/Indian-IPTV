@@ -57,6 +57,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.ui.focus.focusProperties
@@ -388,6 +389,7 @@ private fun NetflixLayout(
                                     onDone = { onSetManaging(false) },
                                     onToggleFavorite = onToggleFavorite,
                                     onMoveFavorite = onMoveFavorite,
+                                    onContextMenu = { contextTarget = it },
                                 )
                             else -> RailsView(
                                 state = state,
@@ -470,10 +472,12 @@ private fun KeyHintStrip(
     val hints: List<Int> = when {
         state.managingFavorites -> listOf(
             R.string.keyhint_ok_toggle_favorite,
+            R.string.keyhint_ok_long_menu,
             R.string.keyhint_back_exit,
         )
         state.selectedType == ContentType.TV -> listOf(
             R.string.keyhint_ok_play,
+            R.string.keyhint_ok_long_menu,
             R.string.keyhint_menu_favorites,
             R.string.keyhint_search,
         )
@@ -944,6 +948,8 @@ private fun ManageFavoritesView(
     onDone: () -> Unit,
     onToggleFavorite: (String) -> Unit,
     onMoveFavorite: (String, Int) -> Unit = { _, _ -> },
+    /** Long-OK on a row opens the shared card context menu instead of instant removal. */
+    onContextMenu: (Channel) -> Unit = {},
 ) {
     var orderMode by remember { mutableStateOf(false) }
     var movingId by remember { mutableStateOf<String?>(null) }
@@ -1109,6 +1115,7 @@ private fun ManageFavoritesView(
                             channel = ch,
                             trailing = if (isFav) star else null,
                             onClick = { onToggleFavorite(ch.id) },
+                            onLongClick = { onContextMenu(ch) },
                         )
                     }
                 }
@@ -1124,6 +1131,7 @@ private fun ChannelListRow(
     trailing: String?,
     nowPlaying: String? = null,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(10.dp)
@@ -1139,6 +1147,7 @@ private fun ChannelListRow(
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
         modifier = Modifier
             .fillMaxWidth()
+            .then(if (onLongClick != null) Modifier.okLongPress(onLongClick) else Modifier)
             .onFocusChanged { focused = it.isFocused }
             .tvFocus(focused, shape),
     ) {
@@ -2664,6 +2673,44 @@ private fun CardProgressBar(fraction: Float, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * D-pad long-press detection for focusable surfaces.
+ *
+ * TV-material's `Surface(onLongClick)` reliably fires for touch long-presses, but on many
+ * remotes (Formuler among them) a *held* OK button never triggers it — the hold degrades
+ * into a plain click on key-up. That made held OK on cards fire the primary action (or,
+ * on the manage-favourites list, toggle the channel out of favourites) with no options
+ * menu at all.
+ *
+ * This modifier watches for OK key repeats instead: if the key is still down after the
+ * first system repeat (~500 ms), we fire [onLongPress] once and swallow the repeats plus
+ * the trailing key-up, so the click handler never sees the hold.
+ */
+private fun Modifier.okLongPress(onLongPress: () -> Unit): Modifier = composed {
+    val longFired = remember { mutableStateOf(false) }
+    onPreviewKeyEvent { event ->
+        val native = event.nativeKeyEvent
+        val isOk = native.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
+            native.keyCode == android.view.KeyEvent.KEYCODE_ENTER
+        when {
+            !isOk -> false
+            native.action == android.view.KeyEvent.ACTION_DOWN && native.repeatCount >= 1 -> {
+                if (!longFired.value) {
+                    longFired.value = true
+                    onLongPress()
+                }
+                true
+            }
+            native.action == android.view.KeyEvent.ACTION_UP -> {
+                val consumed = longFired.value
+                longFired.value = false
+                consumed
+            }
+            else -> false
+        }
+    }
+}
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun FocusableCard(
@@ -2700,6 +2747,7 @@ private fun FocusableCard(
         modifier = Modifier
             .size(width = width, height = height)
             .scale(scale)
+            .then(if (onLongClick != null) Modifier.okLongPress(onLongClick) else Modifier)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged { focused = it.isFocused }
             .then(
