@@ -24,10 +24,20 @@ object LanguageGroups {
         "swahili", "yoruba", "hausa", "igbo", "zulu", "afrikaans", "catalan", "basque",
         "galician", "belarusian", "latvian", "lithuanian", "estonian", "maltese", "chechen",
         "tatar", "bashkir", "chuvash", "ossetian", "abkhaz", "adyghe", "karachay", "balkar",
-        "dagestan", "inhush", "cesen", "krio", "bambara", "ewe", "twi", "dinka", "ndebele",
-        "shona", "sotho", "tswana", "wolof", "fulfulde", "tigrinya", "amharigna",
+        "ingush", "cechen", "krio", "bambara", "ewe", "twi", "dinka", "ndebele",
+        "shona", "sotho", "tswana", "wolof", "fulfulde", "tigrinya", "amharic",
     )
 
-    /** True when a category/rail title is just a language name (e.g. "Hindi"). */
-    fun isLanguageTitle(title: String): Boolean = title.trim().lowercase() in NAMES
+    private val NOISE_SUFFIXES = setOf("hd", "fhd", "sd", "uhd", "4k", "8k", "tv", "channel", "channels")
+
+    /** True when a category/rail title is just a language name (e.g. "Hindi", "Hindi HD"). */
+    fun isLanguageTitle(title: String): Boolean {
+        val cleaned = DisplayNames.clean(title).trim().lowercase()
+        if (cleaned in NAMES) return true
+        // Drop pure-noise suffixes ("Hindi HD", "Tamil Channels") and re-check.
+        val stripped = cleaned.split(' ')
+            .filterNot { it in NOISE_SUFFIXES }
+            .joinToString(" ")
+        return stripped in NAMES
+    }
 }

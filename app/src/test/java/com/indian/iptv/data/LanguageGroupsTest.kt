@@ -22,4 +22,11 @@ class LanguageGroupsTest {
             assertFalse("expected non-language: '$title'", LanguageGroups.isLanguageTitle(title))
         }
     }
+
+    @Test
+    fun `noise suffixes are stripped before matching`() {
+        assertTrue(LanguageGroups.isLanguageTitle("Hindi HD"))
+        assertTrue(LanguageGroups.isLanguageTitle("Tamil Channels"))
+        assertFalse(LanguageGroups.isLanguageTitle("Hindi News"))
+    }
 }
