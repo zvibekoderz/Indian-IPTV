@@ -1381,7 +1381,7 @@ private fun FilterChip(
     var localFocused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         targetValue = if (localFocused || isFocused) 1.06f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
         label = "filter-chip-scale",
     )
     val listState = androidx.tv.foundation.lazy.list.rememberTvLazyListState()
@@ -1520,7 +1520,7 @@ private fun ProfileChip(name: String, colorArgb: Int?, emoji: String?, onClick: 
     var focused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         targetValue = if (focused) 1.08f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
         label = "profile-scale",
     )
     // Initial letter rendered in the accent color as a tiny avatar circle.
@@ -1626,7 +1626,7 @@ private fun SearchChip(onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         targetValue = if (focused) 1.08f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
         label = "search-scale",
     )
     // A single icon on a transparent pill reads as grey-on-grey against the ambient
@@ -1662,7 +1662,7 @@ private fun SettingsChip(onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         targetValue = if (focused) 1.08f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
         label = "settings-scale",
     )
     Surface(
@@ -2758,7 +2758,7 @@ private fun FocusableCard(
     val scale by animateFloatAsState(
         targetValue = if (focused) 1.08f else 1f,
         animationSpec = spring(
-            stiffness = Spring.StiffnessMediumLow,
+            stiffness = Spring.StiffnessMedium,
             dampingRatio = Spring.DampingRatioMediumBouncy,
         ),
         label = "card-scale",

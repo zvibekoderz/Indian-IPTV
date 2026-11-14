@@ -125,7 +125,7 @@ private fun ProfileTile(profile: ProfileEntity, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         targetValue = if (focused) 1.10f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
         label = "profile-tile-scale",
     )
     val focusRequester = remember { FocusRequester() }
