@@ -26,8 +26,8 @@ android {
         // separate :mobileapp module (com.indian.iptv.mobile).
         minSdk = 29
         targetSdk = 34
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.4.0"
 
         buildConfigField("String", "TMDB_BEARER_TOKEN", "\"$tmdbBearerToken\"")
     }

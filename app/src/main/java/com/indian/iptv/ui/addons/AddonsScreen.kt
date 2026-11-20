@@ -60,7 +60,10 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun AddonsScreen(onBack: () -> Unit, onPlay: (url: String, title: String) -> Unit) {
+fun AddonsScreen(
+    onBack: () -> Unit,
+    onPlay: (url: String, title: String, headers: Map<String, String>) -> Unit,
+) {
     val app = IptvApp.get()
     val scope = rememberCoroutineScope()
     val savedUrl by app.settings.addonUrl.collectAsState(initial = "")
@@ -322,7 +325,13 @@ fun AddonsScreen(onBack: () -> Unit, onPlay: (url: String, title: String) -> Uni
                         )
                         else -> streams.forEach { stream ->
                             Button(
-                                onClick = { onPlay(stream.url, pendingMeta?.name ?: stream.label) },
+                                onClick = {
+                                    onPlay(
+                                        stream.url,
+                                        pendingMeta?.name ?: stream.label,
+                                        stream.headers,
+                                    )
+                                },
                                 modifier = Modifier.fillMaxWidth(),
                             ) { Text(stream.label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                         }

@@ -82,6 +82,7 @@ import kotlin.math.roundToLong
  *  - landscape + immersive while playing; system bars restored on exit
  */
 @Composable
+@OptIn(androidx.media3.common.util.UnstableApi::class)
 fun PlayerScreen(
     channel: Channel,
     settings: Settings,
@@ -231,7 +232,11 @@ fun PlayerScreen(
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                errorMessage = error.errorCodeName.removePrefix("ERROR_")
+                val httpStatus = generateSequence(error.cause) { it.cause }
+                    .filterIsInstance<androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException>()
+                    .firstOrNull()?.responseCode
+                errorMessage = httpStatus?.let { "HTTP $it · ${error.errorCodeName.removePrefix("ERROR_")}" }
+                    ?: error.errorCodeName.removePrefix("ERROR_")
             }
         }
     }
