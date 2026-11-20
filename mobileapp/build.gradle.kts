@@ -20,11 +20,24 @@ android {
         // Android 9 (API 28) floor, per project requirement.
         minSdk = 28
         targetSdk = 34
-        versionCode = 8
-        versionName = "1.2.0"
+        versionCode = 9
+        versionName = "1.3.0"
+    }
+
+    signingConfigs {
+        // Same checked-in debug key as :app — see app/build.gradle.kts for the rationale.
+        getByName("debug") {
+            storeFile = rootProject.file("signing/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

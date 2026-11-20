@@ -26,13 +26,22 @@ android {
         // separate :mobileapp module (com.indian.iptv.mobile).
         minSdk = 29
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
 
         buildConfigField("String", "TMDB_BEARER_TOKEN", "\"$tmdbBearerToken\"")
     }
 
     signingConfigs {
+        // Stable project debug key, checked in so every local/CI debug build has the SAME
+        // signature. Without this, each machine's auto-generated ~/.android/debug.keystore
+        // produces a different signature and Android refuses to install over the old app.
+        getByName("debug") {
+            storeFile = rootProject.file("signing/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         // Release keystore from local.properties; without it release builds fall back to the
         // debug key (fine for sideloading, not for distribution).
         val storeFilePath = localProps.getProperty("RELEASE_STORE_FILE")
@@ -49,6 +58,7 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
         }
         release {
             // R8 + resource shrinking shave significant size off the APK and remove a chunk
