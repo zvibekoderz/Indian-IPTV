@@ -1,0 +1,335 @@
+package com.indian.iptv.ui.addons
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.tv.foundation.lazy.grid.TvGridCells
+import androidx.tv.foundation.lazy.grid.TvLazyVerticalGrid
+import androidx.tv.foundation.lazy.grid.items
+import androidx.tv.foundation.lazy.list.TvLazyRow
+import androidx.tv.foundation.lazy.list.itemsIndexed as rowItemsIndexed
+import androidx.tv.material3.Button
+import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Text
+import com.indian.iptv.IptvApp
+import com.indian.iptv.data.Channel
+import com.indian.iptv.data.ContentType
+import com.indian.iptv.data.addon.StremioAddon
+import com.indian.iptv.ui.channels.PosterCard
+import com.indian.iptv.ui.theme.IptvPalette
+import kotlinx.coroutines.launch
+
+/**
+ * On-demand catalogues exposed by a Stremio-compatible add-on (e.g. CNCVerse
+ * Bridge). This is a thin client of the public add-on REST protocol; it does
+ * not embed or depend on the Bridge codebase.
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+fun AddonsScreen(onBack: () -> Unit, onPlay: (url: String, title: String) -> Unit) {
+    val app = IptvApp.get()
+    val scope = rememberCoroutineScope()
+    val savedUrl by app.settings.addonUrl.collectAsState(initial = "")
+
+    var input by remember { mutableStateOf("") }
+    var activeUrl by remember { mutableStateOf("") }
+    var addon by remember { mutableStateOf<StremioAddon?>(null) }
+    var manifest by remember { mutableStateOf<StremioAddon.Manifest?>(null) }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    var selectedIndex by remember { mutableIntStateOf(0) }
+    var metas by remember { mutableStateOf<List<StremioAddon.Meta>>(emptyList()) }
+    var pendingMeta by remember { mutableStateOf<StremioAddon.Meta?>(null) }
+    var streams by remember { mutableStateOf<List<StremioAddon.Stream>>(emptyList()) }
+
+    LaunchedEffect(savedUrl) {
+        if (savedUrl.isNotBlank()) {
+            input = savedUrl
+            activeUrl = savedUrl
+        }
+    }
+
+    LaunchedEffect(activeUrl) {
+        if (activeUrl.isBlank()) {
+            addon = null
+            manifest = null
+            return@LaunchedEffect
+        }
+        val instance = StremioAddon.create(activeUrl)
+        if (instance == null) {
+            addon = null
+            manifest = null
+            error = "Enter a valid http(s) add-on URL"
+            return@LaunchedEffect
+        }
+        loading = true
+        error = null
+        manifest = null
+        runCatching { instance.manifest() }
+            .onSuccess { loaded ->
+                addon = instance
+                manifest = loaded
+                selectedIndex = 0
+            }
+            .onFailure { failure ->
+                addon = null
+                error = failure.message ?: "Couldn't reach the add-on"
+            }
+        loading = false
+    }
+
+    val catalogs = manifest?.catalogs.orEmpty()
+    val selectedCatalog = catalogs.getOrNull(selectedIndex)
+
+    LaunchedEffect(addon, selectedCatalog?.type, selectedCatalog?.id) {
+        val current = addon
+        val catalog = selectedCatalog
+        if (current == null || catalog == null) {
+            metas = emptyList()
+            return@LaunchedEffect
+        }
+        loading = true
+        error = null
+        runCatching { current.catalog(catalog.type, catalog.id) }
+            .onSuccess { metas = it }
+            .onFailure { failure -> error = failure.message ?: "Couldn't load catalogue" }
+        loading = false
+    }
+
+    LaunchedEffect(pendingMeta) {
+        val meta = pendingMeta
+        val current = addon
+        streams = emptyList()
+        if (meta == null || current == null) return@LaunchedEffect
+        loading = true
+        error = null
+        runCatching { current.streams(meta.type, meta.id) }
+            .onSuccess { found ->
+                streams = found
+                if (found.isEmpty()) error = "No direct-playable stream for this title"
+            }
+            .onFailure { failure -> error = failure.message ?: "Couldn't load streams" }
+        loading = false
+    }
+
+    BackHandler {
+        if (pendingMeta != null) pendingMeta = null else onBack()
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.radialGradient(
+                    colors = listOf(IptvPalette.AccentDeep.copy(alpha = 0.24f), IptvPalette.BackgroundDeep),
+                    radius = 1400f,
+                ),
+            ),
+    ) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 48.dp, vertical = 20.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "ADD-ONS",
+                    style = MaterialTheme.typography.headlineSmall.copy(
+                        fontWeight = FontWeight.Black,
+                        color = IptvPalette.Accent,
+                        letterSpacing = 2.sp,
+                    ),
+                )
+                Spacer(Modifier.weight(1f))
+                Button(onClick = onBack) { Text("Back") }
+                Spacer(Modifier.width(12.dp))
+                Button(
+                    onClick = {
+                        scope.launch {
+                            app.settings.setAddonUrl(input)
+                            activeUrl = input
+                        }
+                    },
+                ) { Text("Connect") }
+            }
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = input,
+                onValueChange = { input = it },
+                label = { androidx.compose.material3.Text("Add-on URL (manifest.json or host)") },
+                placeholder = { androidx.compose.material3.Text("http://127.0.0.1:8080/manifest.json") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(0.72f),
+            )
+            Text(
+                text = "CNCVerse Bridge shows this URL when its server is running. " +
+                    "Use the phone/TV's own 127.0.0.1 when Bridge runs on the same device, " +
+                    "or a LAN address when it runs on another one.",
+                style = MaterialTheme.typography.bodySmall.copy(color = IptvPalette.TextSecondary),
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            Spacer(Modifier.height(16.dp))
+
+            when {
+                loading && manifest == null -> Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Text("Connecting to add-on…")
+                }
+
+                error != null && manifest == null -> Text(
+                    text = error ?: "Add-on unavailable",
+                    style = MaterialTheme.typography.bodyMedium.copy(color = IptvPalette.Accent),
+                )
+
+                manifest == null -> Text(
+                    text = "Enter an add-on URL above and press Connect.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+
+                else -> {
+                    Text(
+                        text = manifest?.name.orEmpty(),
+                        style = MaterialTheme.typography.titleMedium.copy(color = IptvPalette.TextPrimary),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    if (catalogs.isEmpty()) {
+                        Text("This add-on publishes no catalogues.", style = MaterialTheme.typography.bodyMedium)
+                    } else {
+                        TvLazyRow(
+                            contentPadding = PaddingValues(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            rowItemsIndexed(catalogs) { index, catalog ->
+                                val active = index == selectedIndex
+                                Text(
+                                    text = "${catalog.name} · ${catalog.type}",
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        color = if (active) IptvPalette.BackgroundDeep else IptvPalette.TextPrimary,
+                                        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                                    ),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(if (active) IptvPalette.Accent else IptvPalette.SurfaceLift)
+                                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                                        .clickable { selectedIndex = index }
+                                        .onFocusChanged { state ->
+                                            if (state.hasFocus && !active) selectedIndex = index
+                                        },
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        if (loading) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        }
+                        error?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall.copy(color = IptvPalette.Accent))
+                        }
+                        TvLazyVerticalGrid(
+                            columns = TvGridCells.Adaptive(168.dp),
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(bottom = 48.dp),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(20.dp),
+                        ) {
+                            items(metas, key = { it.type + it.id }) { meta ->
+                                PosterCard(
+                                    channel = Channel(
+                                        id = "addon-meta:${meta.type}:${meta.id}",
+                                        name = meta.name,
+                                        logoUrl = meta.poster,
+                                        groupTitle = meta.type,
+                                        streamUrl = null,
+                                        epgChannelId = null,
+                                        type = if (meta.type == "series") ContentType.SERIES else ContentType.MOVIE,
+                                    ),
+                                    progressFraction = null,
+                                    onClick = { pendingMeta = meta },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (pendingMeta != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(androidx.compose.ui.graphics.Color(0xCC000000)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth(0.5f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(IptvPalette.SurfaceElevated)
+                        .padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        text = pendingMeta?.name.orEmpty(),
+                        style = MaterialTheme.typography.titleLarge.copy(color = IptvPalette.TextPrimary),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    when {
+                        loading -> CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        streams.isEmpty() -> Text(
+                            text = error ?: "No direct-playable stream found.",
+                            style = MaterialTheme.typography.bodyMedium.copy(color = IptvPalette.AccentSoft),
+                        )
+                        else -> streams.forEach { stream ->
+                            Button(
+                                onClick = { onPlay(stream.url, pendingMeta?.name ?: stream.label) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text(stream.label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        }
+                    }
+                    Button(onClick = { pendingMeta = null }) { Text("Close") }
+                }
+            }
+        }
+    }
+}

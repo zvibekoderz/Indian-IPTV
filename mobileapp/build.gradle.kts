@@ -70,6 +70,8 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.6.0")
 
     testImplementation("junit:junit:4.13.2")
+    // org.json ships with Android; needed only for JVM unit tests of add-on parsing.
+    testImplementation("org.json:json:20240303")
     // XML pull-parser implementation for the JVM unit tests (Android ships one).
     testImplementation("net.sf.kxml:kxml2:2.3.0")
 }

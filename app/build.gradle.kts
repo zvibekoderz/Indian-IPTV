@@ -142,4 +142,6 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    // org.json ships with Android; needed only for JVM unit tests of add-on parsing.
+    testImplementation("org.json:json:20240303")
 }

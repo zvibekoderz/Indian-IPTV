@@ -144,6 +144,7 @@ fun ChannelsScreen(
     onOpenProfiles: () -> Unit,
     onOpenCategories: (ContentType, String?) -> Unit = { _, _ -> },
     onOpenGuide: () -> Unit = {},
+    onOpenAddons: () -> Unit = {},
     onPlay: (Channel, List<Channel>) -> Unit,
     onPlayDirect: (Channel) -> Unit,
     onOpenDetail: (Channel) -> Unit,
@@ -190,6 +191,7 @@ fun ChannelsScreen(
                     onSelectType = vm::selectType,
                     onOpenCategories = onOpenCategories,
                     onOpenGuide = onOpenGuide,
+                    onOpenAddons = onOpenAddons,
                     onOpenSettings = onOpenSettings,
                     onOpenProfiles = onOpenProfiles,
                     onRefresh = vm::refresh,
@@ -241,6 +243,7 @@ private fun NetflixLayout(
     onSelectType: (ContentType) -> Unit,
     onOpenCategories: (ContentType, String?) -> Unit,
     onOpenGuide: () -> Unit,
+    onOpenAddons: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenProfiles: () -> Unit,
     onRefresh: () -> Unit,
@@ -348,6 +351,7 @@ private fun NetflixLayout(
             onOpenSearch = { searchVisible = true },
             onOpenCategories = { onOpenCategories(state.selectedType, null) },
             onOpenGuide = onOpenGuide.takeIf { state.selectedType == ContentType.TV },
+            onOpenAddons = onOpenAddons,
             onRefresh = onRefresh,
             refreshing = state.refreshing,
             lastRefreshAtMs = state.lastRefreshAtMs,
@@ -1238,6 +1242,7 @@ private fun TopBar(
     onOpenSearch: () -> Unit,
     onOpenCategories: () -> Unit,
     onOpenGuide: (() -> Unit)? = null,
+    onOpenAddons: () -> Unit,
     onRefresh: () -> Unit,
     refreshing: Boolean,
     lastRefreshAtMs: Long,
@@ -1263,7 +1268,7 @@ private fun TopBar(
             ),
         )
         Spacer(Modifier.weight(1f))
-        // Focus targets (max 5): Search, Categories, Guide, Profile, Settings
+        // Focus targets: Search, Categories, Guide, Add-ons, Profile, Settings
         SearchChip(onClick = onOpenSearch)
         Spacer(Modifier.width(12.dp))
         TabPill(
@@ -1279,6 +1284,12 @@ private fun TopBar(
                 onClick = onOpenGuide,
             )
         }
+        Spacer(Modifier.width(8.dp))
+        TabPill(
+            label = "Add-ons",
+            selected = false,
+            onClick = onOpenAddons,
+        )
         Spacer(Modifier.width(12.dp))
         if (activeProfileName != null) {
             ProfileChip(

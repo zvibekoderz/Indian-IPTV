@@ -18,6 +18,7 @@ import com.indian.iptv.mobile.data.M3uParser
 import com.indian.iptv.mobile.data.PlaylistFetcher
 import com.indian.iptv.mobile.data.RecentlyWatched
 import com.indian.iptv.mobile.data.Settings
+import com.indian.iptv.mobile.ui.AddonsScreen
 import com.indian.iptv.mobile.ui.ChannelsScreen
 import com.indian.iptv.mobile.ui.IptvTheme
 import com.indian.iptv.mobile.ui.PlayerScreen
@@ -45,6 +46,7 @@ class MainActivity : ComponentActivity() {
 private sealed interface Screen {
     data object Channels : Screen
     data object Settings : Screen
+    data object Addons : Screen
     data class Player(val channel: Channel) : Screen
 }
 
@@ -126,6 +128,7 @@ private fun AppRoot() {
             onOpenChannel = ::openChannel,
             onRefresh = { load(forceRefresh = true) },
             onOpenSettings = { screen = Screen.Settings },
+            onOpenAddons = { screen = Screen.Addons },
             recent = recentChannels,
             nowNextOf = nowNextOf,
         )
@@ -138,6 +141,12 @@ private fun AppRoot() {
                 load(forceRefresh = true)
             },
             onBack = { screen = Screen.Channels },
+        )
+
+        Screen.Addons -> AddonsScreen(
+            settings = settings,
+            onBack = { screen = Screen.Channels },
+            onPlay = { channel -> screen = Screen.Player(channel) },
         )
 
         is Screen.Player -> PlayerScreen(

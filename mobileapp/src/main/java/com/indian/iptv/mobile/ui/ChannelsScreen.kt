@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
@@ -67,6 +68,7 @@ fun ChannelsScreen(
     onOpenChannel: (Channel) -> Unit,
     onRefresh: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenAddons: () -> Unit = {},
     recent: List<Channel>,
     nowNextOf: (Channel) -> Epg.NowNext?,
 ) {
@@ -93,6 +95,9 @@ fun ChannelsScreen(
             TopAppBar(
                 title = { Text("IPTV Mobile") },
                 actions = {
+                    IconButton(onClick = onOpenAddons) {
+                        Icon(Icons.Filled.PlayArrow, contentDescription = "Add-on catalogues")
+                    }
                     IconButton(onClick = onRefresh) {
                         Icon(Icons.Filled.Refresh, contentDescription = "Reload playlist")
                     }

@@ -61,6 +61,13 @@ class Settings(context: Context) {
             prefs.edit().putString(KEY_EPG_URL, value.trim()).apply()
         }
 
+    /** Base URL of a Stremio-compatible add-on (e.g. CNCVerse Bridge). Blank = off. */
+    var addonUrl: String
+        get() = prefs.getString(KEY_ADDON_URL, "").orEmpty()
+        set(value) {
+            prefs.edit().putString(KEY_ADDON_URL, value.trim()).apply()
+        }
+
     fun resetUrls() {
         prefs.edit().remove(KEY_URLS).apply()
     }
@@ -78,5 +85,6 @@ class Settings(context: Context) {
         private const val KEY_SCALE_MODE = "scale_mode"
         private const val KEY_SCALE_RESET = "scale_mode_reset_v2"
         private const val KEY_EPG_URL = "epg_url"
+        private const val KEY_ADDON_URL = "stremio_addon_url"
     }
 }

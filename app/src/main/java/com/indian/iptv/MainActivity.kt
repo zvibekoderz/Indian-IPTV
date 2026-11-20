@@ -34,6 +34,7 @@ import com.indian.iptv.data.ContentType
 import com.indian.iptv.data.catchup.Catchup
 import com.indian.iptv.data.settings.SourceConfig
 import com.indian.iptv.player.PlayerActivity
+import com.indian.iptv.ui.addons.AddonsScreen
 import com.indian.iptv.ui.categories.CategoriesScreen
 import com.indian.iptv.ui.guide.GuideScreen
 import com.indian.iptv.ui.channels.ChannelsScreen
@@ -105,6 +106,20 @@ class MainActivity : ComponentActivity() {
             if (resumeMs > 0L) putExtra(PlayerActivity.EXTRA_RESUME_POSITION_MS, resumeMs)
         }
         startActivity(intent)
+    }
+
+    /** Play a direct stream URL resolved from a Stremio-compatible add-on. */
+    private fun openAddonStream(url: String, title: String) {
+        val id = "addon:${url.hashCode()}"
+        startActivity(
+            Intent(this, PlayerActivity::class.java).apply {
+                putExtra(PlayerActivity.EXTRA_CHANNEL_ID, id)
+                putExtra(PlayerActivity.EXTRA_ADHOC_IDS, arrayOf(id))
+                putExtra(PlayerActivity.EXTRA_ADHOC_URLS, arrayOf(url))
+                putExtra(PlayerActivity.EXTRA_ADHOC_NAMES, arrayOf(title))
+                putExtra(PlayerActivity.EXTRA_ADHOC_TYPE, ContentType.MOVIE.name)
+            },
+        )
     }
 
     private fun openLiveChannel(channelId: String) {
@@ -184,6 +199,7 @@ private sealed interface Route {
     data class SeriesDetail(val seriesId: String, val preview: Channel? = null) : Route
     data class Categories(val type: ContentType, val category: String?) : Route
     data object Guide : Route
+    data object Addons : Route
     data class PinGate(val target: Route) : Route
 }
 
@@ -327,6 +343,7 @@ private fun AppRouteHost(
                 onOpenSettings = { onNavigate(Route.Settings) },
                 onOpenCategories = { type, category -> onNavigate(Route.Categories(type, category)) },
                 onOpenGuide = { onNavigate(Route.Guide) },
+                onOpenAddons = { onNavigate(Route.Addons) },
                 onOpenProfiles = { onNavigate(Route.Profiles) },
                 onPlay = { channel, list ->
                     when (channel.type) {
@@ -372,6 +389,10 @@ private fun AppRouteHost(
                 onBack = onBack,
                 onPlay = { channel, list -> onPlay(channel, list, 0L) },
                 onPlayItem = onPlayDirect,
+            )
+            Route.Addons -> AddonsScreen(
+                onBack = onBack,
+                onPlay = { url, title -> openAddonStream(url, title) },
             )
             is Route.Categories -> CategoriesScreen(
                 type = route.type,

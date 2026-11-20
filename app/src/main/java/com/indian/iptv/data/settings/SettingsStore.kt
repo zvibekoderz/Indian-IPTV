@@ -117,6 +117,19 @@ class SettingsStore(private val context: Context) {
     private fun recentSearchesKey(profileId: String) =
         stringPreferencesKey("recent_searches::$profileId")
 
+    /**
+     * Base URL of a Stremio-compatible add-on (CNCVerse Bridge runs one on
+     * http://127.0.0.1:8080). Blank = add-on screen disabled.
+     */
+    val addonUrl: Flow<String> = context.dataStore.data.map { it[ADDON_URL].orEmpty() }
+
+    suspend fun setAddonUrl(value: String) {
+        context.dataStore.edit { prefs ->
+            val clean = value.trim()
+            if (clean.isEmpty()) prefs.remove(ADDON_URL) else prefs[ADDON_URL] = clean
+        }
+    }
+
     /** Epoch millis of the last successful catalogue refresh. 0 = never. */
     val lastRefreshSuccessAt: Flow<Long> = context.dataStore.data.map { it[LAST_REFRESH_AT] ?: 0L }
 
@@ -283,6 +296,7 @@ class SettingsStore(private val context: Context) {
         val XT_PASS = stringPreferencesKey("xt_pass")
         val PLAYLIST_ETAG = stringPreferencesKey("playlist_etag")
         val PLAYLIST_LAST_MODIFIED = stringPreferencesKey("playlist_last_modified")
+        val ADDON_URL = stringPreferencesKey("stremio_addon_url")
         val LAST_REFRESH_AT = longPreferencesKey("last_refresh_at")
         val LAST_EPG_REFRESH_AT = longPreferencesKey("last_epg_refresh_at")
         val CATALOGUE_VERSION = androidx.datastore.preferences.core.intPreferencesKey("catalogue_version")
