@@ -39,8 +39,13 @@ class StremioAddon private constructor(private val root: String) {
 
     suspend fun manifest(): Manifest = parseManifest(getJson("$root/manifest.json"))
 
-    suspend fun catalog(type: String, id: String): List<Meta> =
-        parseCatalog(getJson("$root/catalog/${path(type)}/${path(id)}.json"), type)
+    suspend fun catalog(type: String, id: String, search: String? = null): List<Meta> {
+        // Stremio catalog extras live in the path: /catalog/{type}/{id}/search={term}.json
+        val extra = search?.trim()?.takeIf { it.isNotEmpty() }
+            ?.let { "/search=${path(it)}" }
+            .orEmpty()
+        return parseCatalog(getJson("$root/catalog/${path(type)}/${path(id)}$extra.json"), type)
+    }
 
     suspend fun streams(type: String, id: String): List<Stream> =
         parseStreams(getJson("$root/stream/${path(type)}/${path(id)}.json"))

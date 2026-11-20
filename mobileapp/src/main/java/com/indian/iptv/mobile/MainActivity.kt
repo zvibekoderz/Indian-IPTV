@@ -3,6 +3,17 @@ package com.indian.iptv.mobile
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,6 +30,7 @@ import com.indian.iptv.mobile.data.PlaylistFetcher
 import com.indian.iptv.mobile.data.RecentlyWatched
 import com.indian.iptv.mobile.data.Settings
 import com.indian.iptv.mobile.ui.AddonsScreen
+import com.indian.iptv.mobile.ui.BridgeTvScreen
 import com.indian.iptv.mobile.ui.ChannelsScreen
 import com.indian.iptv.mobile.ui.IptvTheme
 import com.indian.iptv.mobile.ui.PlayerScreen
@@ -45,6 +57,7 @@ class MainActivity : ComponentActivity() {
 
 private sealed interface Screen {
     data object Channels : Screen
+    data object BridgeTv : Screen
     data object Settings : Screen
     data object Addons : Screen
     data class Player(val channel: Channel) : Screen
@@ -118,42 +131,76 @@ private fun AppRoot() {
         { channel: Channel -> Epg.lookup(epg, channel.tvgId, channel.name) }
     }
 
-    when (val current = screen) {
-        Screen.Channels -> ChannelsScreen(
-            channels = channels,
-            loading = loading,
-            error = error,
-            favourites = favourites,
-            onToggleFavourite = ::toggleFavourite,
-            onOpenChannel = ::openChannel,
-            onRefresh = { load(forceRefresh = true) },
-            onOpenSettings = { screen = Screen.Settings },
-            onOpenAddons = { screen = Screen.Addons },
-            recent = recentChannels,
-            nowNextOf = nowNextOf,
-        )
+    Column(Modifier.fillMaxSize()) {
+        Box(Modifier.weight(1f)) {
+            when (val current = screen) {
+                Screen.Channels -> ChannelsScreen(
+                    channels = channels,
+                    loading = loading,
+                    error = error,
+                    favourites = favourites,
+                    onToggleFavourite = ::toggleFavourite,
+                    onOpenChannel = ::openChannel,
+                    onRefresh = { load(forceRefresh = true) },
+                    onOpenSettings = { screen = Screen.Settings },
+                    onOpenAddons = { screen = Screen.Addons },
+                    recent = recentChannels,
+                    nowNextOf = nowNextOf,
+                )
 
-        Screen.Settings -> SettingsScreen(
-            settings = settings,
-            onSave = {
-                screen = Screen.Channels
-                channels = null
-                load(forceRefresh = true)
-            },
-            onBack = { screen = Screen.Channels },
-        )
+                Screen.BridgeTv -> BridgeTvScreen(
+                    settings = settings,
+                    onOpenCatalogs = { screen = Screen.Addons },
+                    onPlay = { channel -> screen = Screen.Player(channel) },
+                )
 
-        Screen.Addons -> AddonsScreen(
-            settings = settings,
-            onBack = { screen = Screen.Channels },
-            onPlay = { channel -> screen = Screen.Player(channel) },
-        )
+                Screen.Settings -> SettingsScreen(
+                    settings = settings,
+                    onSave = {
+                        screen = Screen.Channels
+                        channels = null
+                        load(forceRefresh = true)
+                    },
+                    onBack = { screen = Screen.Channels },
+                )
 
-        is Screen.Player -> PlayerScreen(
-            channel = current.channel,
-            settings = settings,
-            nowPlaying = nowNextOf(current.channel),
-            onClose = { screen = Screen.Channels },
-        )
+                Screen.Addons -> AddonsScreen(
+                    settings = settings,
+                    onBack = { screen = Screen.BridgeTv },
+                    onPlay = { channel -> screen = Screen.Player(channel) },
+                )
+
+                is Screen.Player -> PlayerScreen(
+                    channel = current.channel,
+                    settings = settings,
+                    nowPlaying = nowNextOf(current.channel),
+                    onClose = { screen = Screen.Channels },
+                )
+            }
+        }
+
+        // The player stays full-screen; every other screen gets the three tabs.
+        if (screen !is Screen.Player) {
+            NavigationBar {
+                NavigationBarItem(
+                    selected = screen == Screen.Channels,
+                    onClick = { screen = Screen.Channels },
+                    icon = { Icon(Icons.Filled.List, contentDescription = null) },
+                    label = { Text("Live TV") },
+                )
+                NavigationBarItem(
+                    selected = screen == Screen.BridgeTv || screen == Screen.Addons,
+                    onClick = { screen = Screen.BridgeTv },
+                    icon = { Icon(Icons.Filled.PlayArrow, contentDescription = null) },
+                    label = { Text("Bridge TV") },
+                )
+                NavigationBarItem(
+                    selected = screen == Screen.Settings,
+                    onClick = { screen = Screen.Settings },
+                    icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
+                    label = { Text("Settings") },
+                )
+            }
+        }
     }
 }
