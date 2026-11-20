@@ -34,6 +34,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -194,7 +195,7 @@ fun BridgeTvScreen(
                 onValueChange = { input = it },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, top = 8.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 singleLine = true,
                 label = { Text("Add-on URL (manifest.json or host)") },
                 placeholder = { Text("https://bridge.yourdomain.com/manifest.json") },
