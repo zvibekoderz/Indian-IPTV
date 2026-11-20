@@ -74,7 +74,7 @@ fun SettingsScreen(
                 placeholder = { Text("https://example.com/playlist.m3u") },
             )
             Spacer(Modifier.height(16.dp))
-            Text("EPG URL (XMLTV, optional)", style = MaterialTheme.typography.titleSmall)
+            Text("EPG URLs (XMLTV, comma-separated)", style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = epgUrl,
@@ -86,7 +86,8 @@ fun SettingsScreen(
             )
             Text(
                 "For \"Now: …\" programme info under channels and in the player. " +
-                    "Any XMLTV guide works (plain or .xml.gz); leave blank to switch it off.",
+                    "Defaults to the mitthu786/tvepg guides; any XMLTV guide works " +
+                    "(plain or .xml.gz). Leave blank to switch it off.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -106,11 +107,13 @@ fun SettingsScreen(
             OutlinedButton(
                 onClick = {
                     settings.resetUrls()
+                    settings.resetEpgUrl()
                     urls = Settings.DEFAULT_URL
+                    epgUrl = Settings.DEFAULT_EPG_URL
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Reset to default URL")
+                Text("Reset to defaults")
             }
             Spacer(Modifier.height(24.dp))
             Text(

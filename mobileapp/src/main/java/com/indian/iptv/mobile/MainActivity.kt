@@ -102,13 +102,13 @@ private fun AppRoot() {
         recentChannels.firstOrNull()?.let { screen = Screen.Player(it) }
     }
 
-    // Load the XMLTV guide (cached up to 6h) whenever the URL is set/changed.
+    // Load the XMLTV guide(s, cached up to 6h) whenever the setting is changed.
     LaunchedEffect(settings.epgUrl) {
-        val url = settings.epgUrl.trim()
-        if (url.isBlank()) {
+        val urls = settings.epgUrl.split(',', '\n').map { it.trim() }.filter { it.isNotBlank() }
+        if (urls.isEmpty()) {
             epg = emptyMap()
         } else {
-            Epg.load(context, url, forceRefresh = false)?.let { epg = it }
+            Epg.load(context, urls, forceRefresh = false)?.let { epg = it }
         }
     }
 

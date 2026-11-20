@@ -23,6 +23,11 @@ class PlaylistFetcher(context: Context) {
 
     private val cacheDir = File(context.filesDir, "playlists").apply { mkdirs() }
 
+    init {
+        // Bundled name -> tvepg id/logo map; applied to cached playlists too.
+        TvepgCatalogue.load(context)
+    }
+
     private val client = OkHttpClient.Builder()
         .dns(DohDns) // DoH fallback for poisoned ISP resolvers
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -51,7 +56,7 @@ class PlaylistFetcher(context: Context) {
         for (f in fetched) {
             val text = f.text
             when {
-                text != null -> channels += M3uParser.parse(text)
+                text != null -> channels += M3uParser.parse(text).map(TvepgCatalogue::enrich)
                 f.failure != null -> failures += "${f.url}: ${f.failure}"
             }
         }

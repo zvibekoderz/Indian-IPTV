@@ -10,6 +10,7 @@ import org.xmlpull.v1.XmlPullParserFactory
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.InputStream
+import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
@@ -28,56 +29,63 @@ object Epg {
 
     data class NowNext(val now: String?, val next: String?)
 
-    private const val CACHE_NAME = "epg.xmltv"
     private const val MAX_AGE_MS = 6 * 60 * 60 * 1000L
 
-    /**
-     * Downloads and caches the guide at [url], then parses it. Returns the
-     * lookup map, or null on failure (the caller keeps whatever it had).
-     * The cache is refreshed at most every [MAX_AGE_MS].
-     */
+    /** Backwards-compatible single-feed overload. */
     suspend fun load(context: Context, url: String, forceRefresh: Boolean): Map<String, NowNext>? =
-        withContext(Dispatchers.IO) {
-            val cache = File(context.filesDir, CACHE_NAME)
-            val fresh = cache.exists() && cache.length() > 0 &&
-                System.currentTimeMillis() - cache.lastModified() < MAX_AGE_MS
+        load(context, listOf(url), forceRefresh)
 
-            if (!fresh || forceRefresh) {
-                try {
-                    val client = OkHttpClient.Builder()
-                        .dns(DohDns)
-                        .connectTimeout(15, TimeUnit.SECONDS)
-                        .readTimeout(90, TimeUnit.SECONDS)
-                        .build()
-                    client.newCall(
-                        Request.Builder()
-                            .url(url)
-                            .header("User-Agent", PlaylistFetcher.DEFAULT_USER_AGENT)
-                            .build()
-                    ).execute().use { response ->
-                        if (!response.isSuccessful) throw IllegalStateException("HTTP ${response.code}")
-                        val tmp = File(context.filesDir, "$CACHE_NAME.tmp")
-                        response.body!!.byteStream().use { input ->
-                            tmp.outputStream().use { output -> input.copyTo(output) }
+    /**
+     * Downloads and caches each XMLTV guide in [urls], then merges the lookups. The tvepg
+     * default is several feeds (JioTV ids + Tata Play `ts###` ids), so a single channel can
+     * get a guide from any of them. Returns null only when no feed could be parsed.
+     * Each feed is cached at most [MAX_AGE_MS].
+     */
+    suspend fun load(context: Context, urls: List<String>, forceRefresh: Boolean): Map<String, NowNext>? =
+        withContext(Dispatchers.IO) {
+            val targets = urls.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+            if (targets.isEmpty()) return@withContext emptyMap()
+
+            val client = OkHttpClient.Builder()
+                .dns(DohDns)
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(90, TimeUnit.SECONDS)
+                .build()
+            val now = System.currentTimeMillis()
+            val merged = HashMap<String, NowNext>()
+
+            for (url in targets) {
+                val cache = File(context.filesDir, cacheName(url))
+                val fresh = cache.exists() && cache.length() > 0 && now - cache.lastModified() < MAX_AGE_MS
+                if (!fresh || forceRefresh) {
+                    val tmp = File(context.filesDir, "${cache.name}.tmp")
+                    try {
+                        client.newCall(
+                            Request.Builder()
+                                .url(url)
+                                .header("User-Agent", PlaylistFetcher.DEFAULT_USER_AGENT)
+                                .build()
+                        ).execute().use { response ->
+                            if (!response.isSuccessful) throw IllegalStateException("HTTP ${response.code}")
+                            response.body!!.byteStream().use { input ->
+                                tmp.outputStream().use { output -> input.copyTo(output) }
+                            }
                         }
                         if (tmp.length() == 0L) throw IllegalStateException("empty guide")
                         if (!tmp.renameTo(cache)) {
                             cache.delete()
                             tmp.renameTo(cache)
                         }
+                    } catch (e: Exception) {
+                        tmp.delete()
+                        // A stale cache, if we have one, is still usable below.
                     }
-                } catch (e: Exception) {
-                    File(context.filesDir, "$CACHE_NAME.tmp").delete()
-                    if (!cache.exists()) return@withContext null
-                    // else: fall back to the stale cache below
+                }
+                if (cache.exists()) {
+                    runCatching { merged.putAll(parse(cache.inputStream(), now)) }
                 }
             }
-
-            try {
-                parse(cache.inputStream(), System.currentTimeMillis())
-            } catch (e: Exception) {
-                null
-            }
+            if (merged.isEmpty()) null else merged
         }
 
     /**
@@ -167,8 +175,13 @@ object Epg {
         return null
     }
 
-    fun normalizeName(name: String): String =
-        name.lowercase().filter { it.isLetterOrDigit() }
+    /** Same normalisation as the bundled channel map, so name fallback matches too. */
+    fun normalizeName(name: String): String = TvepgCatalogue.normalize(name)
+
+    private fun cacheName(url: String): String =
+        "epg-" + MessageDigest.getInstance("MD5")
+            .digest(url.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) } + ".xmltv"
 
     private fun maybeGunzip(stream: BufferedInputStream): InputStream {
         stream.mark(2)

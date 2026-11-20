@@ -2,6 +2,7 @@ package com.indian.iptv.mobile.ui
 
 import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
 import android.media.AudioManager
 import android.view.WindowManager
@@ -88,7 +89,9 @@ fun PlayerScreen(
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
-    val activity = context as? Activity
+    // LocalContext can be a ContextThemeWrapper on some OEM builds; walk the
+    // wrappers so the window flags below always reach the real Activity window.
+    val activity = remember(context) { context.findActivity() }
 
     BackHandler { onClose() }
 
@@ -104,6 +107,11 @@ fun PlayerScreen(
             }
             // Sledgehammer for OEMs that ignore the insets controller.
             window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+            // Keep the display awake for the whole player screen. Tying this to
+            // Player.isPlaying left gaps while the stream was loading or buffering
+            // (and on players that never reported isPlaying), during which the
+            // screen could time out mid-playback. Cleared in onDispose below.
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             WindowCompat.setDecorFitsSystemWindows(window, false)
             val controller = WindowInsetsControllerCompat(window, window.decorView)
             controller.systemBarsBehavior =
@@ -200,18 +208,6 @@ fun PlayerScreen(
     var buffering by remember { mutableStateOf(true) }
     var isPlaying by remember { mutableStateOf(false) }
     var videoSizeText by remember { mutableStateOf("") }
-
-    // Keep the screen awake while the video plays; let it time out
-    // normally when paused (or errored), like a stock video player.
-    LaunchedEffect(isPlaying) {
-        activity?.window?.let { window ->
-            if (isPlaying) {
-                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            } else {
-                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            }
-        }
-    }
 
     val listener = remember(channel.url) {
         object : Player.Listener {
@@ -506,6 +502,13 @@ fun PlayerScreen(
             }
         }
     }
+}
+
+/** Unwrap Compose/OEM ContextThemeWrappers to reach the hosting Activity. */
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 /** "1:23:45" / "12:34" style time for the seek gesture readout. */
