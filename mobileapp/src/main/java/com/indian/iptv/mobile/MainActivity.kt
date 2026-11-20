@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.view.WindowCompat
+import com.indian.iptv.mobile.data.BridgeTvCache
 import com.indian.iptv.mobile.data.Channel
 import com.indian.iptv.mobile.data.Epg
 import com.indian.iptv.mobile.data.M3uParser
@@ -46,6 +47,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        BridgeTvCache.init(applicationContext)
         // Content draws edge-to-edge from the very first frame on every
         // screen — no title bar, no inset band. The player additionally
         // hides the system bars entirely while visible.
@@ -56,12 +58,15 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/** Which tab was visible when the player was opened — where Back should return. */
+private enum class Tab { Live, Bridge, Settings }
+
 private sealed interface Screen {
     data object Channels : Screen
     data object BridgeTv : Screen
     data object Settings : Screen
     data object Addons : Screen
-    data class Player(val channel: Channel) : Screen
+    data class Player(val channel: Channel, val origin: Tab = Tab.Live) : Screen
 }
 
 @Composable
@@ -108,14 +113,14 @@ private fun AppRoot() {
     fun openChannel(channel: Channel) {
         recent.record(channel)
         recentChannels = recent.all()
-        screen = Screen.Player(channel)
+        screen = Screen.Player(channel, Tab.Live)
     }
 
     // Load once on start: instant from cache when available, otherwise fetch.
     LaunchedEffect(Unit) {
         load(forceRefresh = false)
         // Continue watching: jump straight back into the last channel.
-        recentChannels.firstOrNull()?.let { screen = Screen.Player(it) }
+        recentChannels.firstOrNull()?.let { screen = Screen.Player(it, Tab.Live) }
     }
 
     // Load the XMLTV guide(s, cached up to 6h) whenever the setting is changed.
@@ -152,7 +157,7 @@ private fun AppRoot() {
                 Screen.BridgeTv -> BridgeTvScreen(
                     settings = settings,
                     onOpenCatalogs = { screen = Screen.Addons },
-                    onPlay = { channel -> screen = Screen.Player(channel) },
+                    onPlay = { channel -> screen = Screen.Player(channel, Tab.Bridge) },
                 )
 
                 Screen.Settings -> SettingsScreen(
@@ -168,14 +173,20 @@ private fun AppRoot() {
                 Screen.Addons -> AddonsScreen(
                     settings = settings,
                     onBack = { screen = Screen.BridgeTv },
-                    onPlay = { channel -> screen = Screen.Player(channel) },
+                    onPlay = { channel -> screen = Screen.Player(channel, Tab.Bridge) },
                 )
 
                 is Screen.Player -> PlayerScreen(
                     channel = current.channel,
                     settings = settings,
                     nowPlaying = nowNextOf(current.channel),
-                    onClose = { screen = Screen.Channels },
+                    onClose = {
+                        screen = when (current.origin) {
+                            Tab.Live -> Screen.Channels
+                            Tab.Bridge -> Screen.BridgeTv
+                            Tab.Settings -> Screen.Settings
+                        }
+                    },
                 )
             }
         }

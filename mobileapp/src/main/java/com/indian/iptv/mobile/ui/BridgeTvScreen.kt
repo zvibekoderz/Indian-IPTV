@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -34,7 +35,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -46,10 +46,12 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.indian.iptv.mobile.data.BridgeTvCache
 import com.indian.iptv.mobile.data.Channel
 import com.indian.iptv.mobile.data.Settings
 import com.indian.iptv.mobile.data.StremioAddon
 import com.indian.iptv.mobile.data.StreamProbe
+import com.indian.iptv.mobile.data.WorkingChannel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -57,12 +59,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-
-private data class WorkingChannel(
-    val meta: StremioAddon.Meta,
-    val stream: StremioAddon.Stream,
-    val catalogName: String,
-)
 
 /**
  * Dedicated tab for the live `tv` catalogues of a Stremio-compatible add-on
@@ -89,10 +85,11 @@ fun BridgeTvScreen(
     var results by remember { mutableStateOf<List<WorkingChannel>>(emptyList()) }
     var checking by remember { mutableStateOf(false) }
     var checkError by remember { mutableStateOf<String?>(null) }
-    val probeCache = remember { mutableStateMapOf<String, Boolean>() }
+    var refreshKey by remember { mutableStateOf(0) }
 
     val tvCatalogs = manifest?.catalogs?.filter { it.type.equals("tv", ignoreCase = true) }.orEmpty()
     val catalogsKey = tvCatalogs.joinToString { "${it.type}/${it.id}" }
+    val cacheKey = BridgeTvCache.key(activeUrl, selectedCatalogId, query)
 
     LaunchedEffect(activeUrl) {
         val instance = StremioAddon.create(activeUrl)
@@ -114,7 +111,7 @@ fun BridgeTvScreen(
         connecting = false
     }
 
-    LaunchedEffect(addon, catalogsKey, selectedCatalogId, query) {
+    LaunchedEffect(addon, catalogsKey, selectedCatalogId, query, refreshKey) {
         val client = addon ?: run {
             results = emptyList()
             return@LaunchedEffect
@@ -122,6 +119,14 @@ fun BridgeTvScreen(
         val catalogs = tvCatalogs.filter { selectedCatalogId.isEmpty() || it.id == selectedCatalogId }
         if (catalogs.isEmpty()) {
             results = emptyList()
+            return@LaunchedEffect
+        }
+        // A previous search for this add-on/catalog/term is served instantly: no add-on
+        // request and no re-probing. This survives tab switches and app restarts.
+        BridgeTvCache.results(cacheKey)?.let { cached ->
+            results = cached
+            checking = false
+            checkError = null
             return@LaunchedEffect
         }
         // Debounce typing so we don't hammer the add-on on every keystroke.
@@ -160,15 +165,16 @@ fun BridgeTvScreen(
                         val streams = runCatching { client.streams(meta.type, meta.id) }
                             .getOrDefault(emptyList())
                         val playable = streams.firstOrNull { stream ->
-                            val cached = probeCache[stream.url]
+                            val cached = BridgeTvCache.probe(stream.url)
                             cached ?: StreamProbe.isPlayable(stream.url, stream.headers)
-                                .also { probeCache[stream.url] = it }
+                                .also { BridgeTvCache.putProbe(stream.url, it) }
                         }
                         playable?.let { WorkingChannel(meta, it, catalogName) }
                     }
                 }
             }.awaitAll().filterNotNull()
         }
+        BridgeTvCache.putResults(cacheKey, working)
         results = working
         checking = false
     }
@@ -178,6 +184,14 @@ fun BridgeTvScreen(
             TopAppBar(
                 title = { Text("Bridge TV") },
                 actions = {
+                    IconButton(
+                        onClick = {
+                            BridgeTvCache.clearResults(cacheKey)
+                            refreshKey++
+                        },
+                    ) {
+                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh channels")
+                    }
                     IconButton(onClick = onOpenCatalogs) {
                         Icon(Icons.Filled.PlayArrow, contentDescription = "Movie catalogues")
                     }
