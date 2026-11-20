@@ -2741,7 +2741,7 @@ private fun FocusableCard(
     val scale by animateFloatAsState(
         targetValue = if (focused) 1.08f else 1f,
         animationSpec = spring(
-            stiffness = Spring.StiffnessMedium,
+            stiffness = Spring.StiffnessMediumLow,
             dampingRatio = Spring.DampingRatioMediumBouncy,
         ),
         label = "card-scale",
@@ -2762,10 +2762,10 @@ private fun FocusableCard(
             .size(width = width, height = height)
             .then(
                 if (focused) Modifier.shadow(
-                    elevation = 16.dp,
+                    elevation = 12.dp,
                     shape = shape,
-                    ambientColor = IptvPalette.AccentSoft.copy(alpha = 0.35f),
-                    spotColor = IptvPalette.AccentSoft.copy(alpha = 0.95f),
+                    ambientColor = IptvPalette.AccentSoft.copy(alpha = 0.30f),
+                    spotColor = IptvPalette.AccentSoft.copy(alpha = 0.85f),
                 ) else Modifier,
             )
             .scale(scale)
@@ -2774,11 +2774,13 @@ private fun FocusableCard(
             .onFocusChanged { focused = it.isFocused }
             .then(
                 if (focused)
-                    // A solid near-white ring — visible over any artwork, unlike the thin
-                    // red gradient that blended into logos and dark posters.
+                    // Original TV highlight: accent gradient ring + red glow, so the
+                    // focused channel reads clearly against dark artwork and logos.
                     Modifier.border(
-                        width = 3.dp,
-                        color = Color.White,
+                        width = 2.dp,
+                        brush = Brush.linearGradient(
+                            listOf(IptvPalette.Accent, IptvPalette.AccentSoft),
+                        ),
                         shape = shape,
                     )
                 else Modifier,
