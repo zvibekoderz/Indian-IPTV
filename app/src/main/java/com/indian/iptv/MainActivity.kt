@@ -62,6 +62,7 @@ class MainActivity : ComponentActivity() {
                         onPlay = { channel, list, resumeMs -> openPlayer(channel, list, resumeMs) },
                         onPlayEpisode = { ep, season, series, resumeMs -> openPlayerForEpisode(ep, season, series, resumeMs) },
                         onPlayDirect = ::onPlayDirect,
+                        onPlayAddon = ::openAddonStream,
                     )
                     ReminderHost(onWatch = ::openLiveChannel)
                 }
@@ -211,6 +212,7 @@ private fun AppRoot(
     onPlay: (Channel, List<Channel>, Long) -> Unit,
     onPlayEpisode: (Episode, SeriesSeason, SeriesRef, Long) -> Unit,
     onPlayDirect: (Channel) -> Unit,
+    onPlayAddon: (String, String) -> Unit,
 ) {
     val app = IptvApp.get()
     // Sentinel wrapper for "first emit hasn't arrived yet" vs "emit arrived but null".
@@ -301,6 +303,7 @@ private fun AppRoot(
                 onPlay = onPlay,
                 onPlayEpisode = onPlayEpisode,
                 onPlayDirect = onPlayDirect,
+                onPlayAddon = onPlayAddon,
             )
         }
     }
@@ -320,6 +323,7 @@ private fun AppRouteHost(
     onPlay: (Channel, List<Channel>, Long) -> Unit,
     onPlayEpisode: (Episode, SeriesSeason, SeriesRef, Long) -> Unit,
     onPlayDirect: (Channel) -> Unit,
+    onPlayAddon: (String, String) -> Unit,
 ) {
     // Keyed on the route so two consecutive screens of the same kind (film → related film)
     // don't share remembered state such as the initial focus request.
@@ -392,7 +396,7 @@ private fun AppRouteHost(
             )
             Route.Addons -> AddonsScreen(
                 onBack = onBack,
-                onPlay = { url, title -> openAddonStream(url, title) },
+                onPlay = onPlayAddon,
             )
             is Route.Categories -> CategoriesScreen(
                 type = route.type,
