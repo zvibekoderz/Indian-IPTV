@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0A0A0C" />
+  <title>Indian IPTV — Interactive UI Preview</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Preview-only navigation: lets you jump to every screen of the app -->
+  <header class="preview-nav">
+    <div class="preview-nav__brand">
+      <span class="preview-nav__dot"></span>
+      <div>
+        <strong>Indian IPTV</strong>
+        <small>interactive UI preview · experiment branch</small>
+      </div>
+    </div>
+    <nav class="preview-nav__tabs" id="previewTabs" aria-label="Preview screens"></nav>
+  </header>
+
+  <!-- The emulated app surface -->
+  <main class="app-frame" id="appFrame">
+    <div class="app-surface" id="screen"></div>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>
