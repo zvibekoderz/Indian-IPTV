@@ -32,7 +32,7 @@ fun Modifier.tvFocus(focused: Boolean, shape: Shape, focusedScale: Float = Focus
     composed {
         val scale by animateFloatAsState(
             targetValue = if (focused) focusedScale else 1f,
-            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+            animationSpec = spring(stiffness = Spring.StiffnessMedium),
             label = "tv-focus-scale",
         )
         this

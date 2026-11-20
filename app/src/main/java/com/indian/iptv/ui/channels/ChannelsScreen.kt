@@ -206,7 +206,6 @@ fun ChannelsScreen(
                     onSearchChange = vm::setSearchQuery,
                     onRememberSearch = vm::rememberCurrentSearch,
                     onClearRecents = vm::clearRecentSearches,
-                    onLanguageSelect = vm::setSelectedLanguage,
                     onGenreSelect = vm::setSelectedGenre,
                     onClearFilters = vm::clearFilters,
                 )
@@ -258,7 +257,6 @@ private fun NetflixLayout(
     onSearchChange: (String) -> Unit,
     onRememberSearch: () -> Unit,
     onClearRecents: () -> Unit,
-    onLanguageSelect: (String?) -> Unit,
     onGenreSelect: (String?) -> Unit,
     onClearFilters: () -> Unit,
 ) {
@@ -360,12 +358,10 @@ private fun NetflixLayout(
             onFocusChanged = { topBarHasFocus = it },
         )
 
-        // Filter chips for TV type (Language ▸ Genre)
+        // Filter chips for TV type (Genre only — the Language row was removed).
         if (state.selectedType == ContentType.TV) {
             FilterChips(
-                languages = state.availableLanguages,
                 selectedLanguage = state.selectedLanguage,
-                onLanguageSelect = onLanguageSelect,
                 genres = state.availableGenres,
                 selectedGenre = state.selectedGenre,
                 onGenreSelect = onGenreSelect,
@@ -1307,15 +1303,13 @@ private fun TopBar(
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun FilterChips(
-    languages: List<String>,
     selectedLanguage: String?,
-    onLanguageSelect: (String?) -> Unit,
     genres: List<String>,
     selectedGenre: String?,
     onGenreSelect: (String?) -> Unit,
     onClearFilters: () -> Unit,
 ) {
-    if (languages.isEmpty() && genres.isEmpty()) return
+    if (genres.isEmpty()) return
 
     var focusedChip by remember { mutableStateOf<FilterChipType?>(null) }
 
@@ -1330,19 +1324,8 @@ private fun FilterChips(
                 .padding(bottom = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // Language chips
-            if (languages.isNotEmpty()) {
-                FilterChip(
-                    label = "Language",
-                    options = languages,
-                    selected = selectedLanguage,
-                    onSelect = onLanguageSelect,
-                    isFocused = focusedChip == FilterChipType.Language,
-                    onFocusChanged = { focused -> focusedChip = if (focused) FilterChipType.Language else null },
-                )
-            }
-
-            // Genre chips
+            // Genre chips only — the Language filter row was dropped from the home screen
+            // (languages remain visible per-channel; rails stay grouped by genre).
             if (genres.isNotEmpty()) {
                 FilterChip(
                     label = "Genre",
@@ -1366,7 +1349,7 @@ private fun FilterChips(
     }
 }
 
-private enum class FilterChipType { Language, Genre }
+private enum class FilterChipType { Genre }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -1381,7 +1364,7 @@ private fun FilterChip(
     var localFocused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         targetValue = if (localFocused || isFocused) 1.06f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
         label = "filter-chip-scale",
     )
     val listState = androidx.tv.foundation.lazy.list.rememberTvLazyListState()
@@ -1520,7 +1503,7 @@ private fun ProfileChip(name: String, colorArgb: Int?, emoji: String?, onClick: 
     var focused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         targetValue = if (focused) 1.08f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
         label = "profile-scale",
     )
     // Initial letter rendered in the accent color as a tiny avatar circle.
@@ -1626,7 +1609,7 @@ private fun SearchChip(onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         targetValue = if (focused) 1.08f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
         label = "search-scale",
     )
     // A single icon on a transparent pill reads as grey-on-grey against the ambient
@@ -1662,7 +1645,7 @@ private fun SettingsChip(onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         targetValue = if (focused) 1.08f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
         label = "settings-scale",
     )
     Surface(
@@ -2791,6 +2774,8 @@ private fun FocusableCard(
             .onFocusChanged { focused = it.isFocused }
             .then(
                 if (focused)
+                    // Original TV highlight: accent gradient ring + red glow, so the
+                    // focused channel reads clearly against dark artwork and logos.
                     Modifier.border(
                         width = 2.dp,
                         brush = Brush.linearGradient(

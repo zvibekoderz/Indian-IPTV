@@ -3,7 +3,10 @@ package com.indian.iptv.data.repo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.indian.iptv.data.Channel
+import com.indian.iptv.data.db.ProgrammeEntity
+import com.indian.iptv.data.epg.TvepgEpg
 import com.indian.iptv.data.m3u.M3uParser
+import com.indian.iptv.data.tvepg.TvepgCatalogue
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
@@ -76,6 +79,7 @@ class M3uPlaylistRepository(
                                 successCount++
                                 anyChanged = true
                                 val channels = body.charStream().buffered().useLines { M3uParser.parse(it) }
+                                    .map(TvepgCatalogue::enrich)
                                 mergeInto(merged, channels, index)
                                 onProgress(ImportProgress(ImportProgress.Stage.Live, merged.size))
                                 newEtags += response.header("ETag").orEmpty()
@@ -109,6 +113,10 @@ class M3uPlaylistRepository(
             )
         }
     }
+
+    /** M3U playlists have no embedded guide — use the bundled tvepg XMLTV feeds. */
+    override suspend fun fetchProgrammes(epgKeys: Set<String>): List<ProgrammeEntity> =
+        TvepgEpg.fetch(epgKeys)
 
     private fun mergeInto(
         target: LinkedHashMap<String, Channel>,
