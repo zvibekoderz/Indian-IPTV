@@ -55,7 +55,7 @@ import com.indian.iptv.mobile.data.WorkingChannel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.Channel as ProbeChannel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -182,7 +182,7 @@ fun BridgeTvScreen(
         // even when a host hangs: whatever was verified by then is shown/cached.
         results = emptyList()
         val permits = Semaphore(PROBE_CONCURRENCY)
-        val verified = Channel<ProbeResult>(Channel.UNLIMITED)
+        val verified = ProbeChannel<ProbeResult>(ProbeChannel.UNLIMITED)
         val found = mutableListOf<WorkingChannel>()
         val deadline = System.currentTimeMillis() + SEARCH_BUDGET_MS
         var timedOut = false
