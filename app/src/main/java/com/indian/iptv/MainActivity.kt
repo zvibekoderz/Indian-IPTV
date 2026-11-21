@@ -35,6 +35,7 @@ import com.indian.iptv.data.catchup.Catchup
 import com.indian.iptv.data.settings.SourceConfig
 import com.indian.iptv.player.PlayerActivity
 import com.indian.iptv.ui.addons.AddonsScreen
+import com.indian.iptv.ui.bridgetv.BridgeTvScreen
 import com.indian.iptv.ui.categories.CategoriesScreen
 import com.indian.iptv.ui.guide.GuideScreen
 import com.indian.iptv.ui.channels.ChannelsScreen
@@ -207,6 +208,7 @@ private sealed interface Route {
     data class Categories(val type: ContentType, val category: String?) : Route
     data object Guide : Route
     data object Addons : Route
+    data object BridgeTv : Route
     data class PinGate(val target: Route) : Route
 }
 
@@ -354,6 +356,7 @@ private fun AppRouteHost(
                 onOpenCategories = { type, category -> onNavigate(Route.Categories(type, category)) },
                 onOpenGuide = { onNavigate(Route.Guide) },
                 onOpenAddons = { onNavigate(Route.Addons) },
+                onOpenBridgeTv = { onNavigate(Route.BridgeTv) },
                 onOpenProfiles = { onNavigate(Route.Profiles) },
                 onPlay = { channel, list ->
                     when (channel.type) {
@@ -401,6 +404,10 @@ private fun AppRouteHost(
                 onPlayItem = onPlayDirect,
             )
             Route.Addons -> AddonsScreen(
+                onBack = onBack,
+                onPlay = onPlayAddon,
+            )
+            Route.BridgeTv -> BridgeTvScreen(
                 onBack = onBack,
                 onPlay = onPlayAddon,
             )

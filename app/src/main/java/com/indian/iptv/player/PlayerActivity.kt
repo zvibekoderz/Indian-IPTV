@@ -528,6 +528,12 @@ class PlayerActivity : ComponentActivity() {
                 val httpStatus = generateSequence(error.cause) { it.cause }
                     .filterIsInstance<androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException>()
                     .firstOrNull()?.responseCode
+                // A Bridge TV channel can pass the reachability probe yet die during
+                // real playback when its signed CDN token expires. Blacklist that URL
+                // so the Bridge TV screen hides it from cached results until TTL expiry.
+                if (channel?.id?.startsWith("addon:") == true) {
+                    channel.streamUrl?.let { com.indian.iptv.data.addon.BridgeTvCache.markDead(it) }
+                }
                 errorOverlay = ErrorState(
                     channelName = channel?.name.orEmpty(),
                     message = httpStatus?.let { "HTTP $it · ${error.errorCodeName}" }

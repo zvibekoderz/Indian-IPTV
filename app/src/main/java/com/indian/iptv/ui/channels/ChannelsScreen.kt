@@ -145,6 +145,7 @@ fun ChannelsScreen(
     onOpenCategories: (ContentType, String?) -> Unit = { _, _ -> },
     onOpenGuide: () -> Unit = {},
     onOpenAddons: () -> Unit = {},
+    onOpenBridgeTv: () -> Unit = {},
     onPlay: (Channel, List<Channel>) -> Unit,
     onPlayDirect: (Channel) -> Unit,
     onOpenDetail: (Channel) -> Unit,
@@ -192,6 +193,7 @@ fun ChannelsScreen(
                     onOpenCategories = onOpenCategories,
                     onOpenGuide = onOpenGuide,
                     onOpenAddons = onOpenAddons,
+                    onOpenBridgeTv = onOpenBridgeTv,
                     onOpenSettings = onOpenSettings,
                     onOpenProfiles = onOpenProfiles,
                     onRefresh = vm::refresh,
@@ -242,6 +244,7 @@ private fun NetflixLayout(
     onOpenCategories: (ContentType, String?) -> Unit,
     onOpenGuide: () -> Unit,
     onOpenAddons: () -> Unit,
+    onOpenBridgeTv: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenProfiles: () -> Unit,
     onRefresh: () -> Unit,
@@ -348,6 +351,7 @@ private fun NetflixLayout(
             onOpenCategories = { onOpenCategories(state.selectedType, null) },
             onOpenGuide = onOpenGuide.takeIf { state.selectedType == ContentType.TV },
             onOpenAddons = onOpenAddons,
+            onOpenBridgeTv = onOpenBridgeTv,
             onRefresh = onRefresh,
             refreshing = state.refreshing,
             lastRefreshAtMs = state.lastRefreshAtMs,
@@ -1228,6 +1232,7 @@ private fun TopBar(
     onOpenCategories: () -> Unit,
     onOpenGuide: (() -> Unit)? = null,
     onOpenAddons: () -> Unit,
+    onOpenBridgeTv: () -> Unit,
     onRefresh: () -> Unit,
     refreshing: Boolean,
     lastRefreshAtMs: Long,
@@ -1274,6 +1279,12 @@ private fun TopBar(
             label = "Add-ons",
             selected = false,
             onClick = onOpenAddons,
+        )
+        Spacer(Modifier.width(8.dp))
+        TabPill(
+            label = "Bridge TV",
+            selected = false,
+            onClick = onOpenBridgeTv,
         )
         Spacer(Modifier.width(12.dp))
         if (activeProfileName != null) {

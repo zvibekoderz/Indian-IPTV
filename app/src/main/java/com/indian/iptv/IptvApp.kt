@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.indian.iptv.data.addon.BridgeTvCache
 import com.indian.iptv.data.db.IptvDatabase
 import com.indian.iptv.data.remote.HttpClient
 import com.indian.iptv.data.reminders.Reminders
@@ -86,6 +87,8 @@ class IptvApp : Application(), ImageLoaderFactory {
         // HttpClient.okHttp for Retrofit construction, and Coil below reuses the same
         // instance so connection pools aren't fragmented.
         HttpClient.init(this)
+        // Persistent cache for the Bridge TV tab (probe + search results).
+        BridgeTvCache.init(this)
         // Bundled mitthu786/tvepg name -> id/logo map used to enrich M3U channels.
         TvepgCatalogue.load(this)
 
