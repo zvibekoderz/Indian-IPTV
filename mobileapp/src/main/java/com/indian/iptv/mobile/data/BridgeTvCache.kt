@@ -26,8 +26,10 @@ object BridgeTvCache {
     private const val PREFS_NAME = "bridge_tv_cache"
     private const val KEY_PROBES = "probes"
     private const val KEY_SEARCHES = "searches"
-    private const val PROBE_TTL_MS = 15 * 60_000L
-    private const val SEARCH_TTL_MS = 10 * 60_000L
+    // Public add-ons hand out signed CDN links that stay valid for hours, so a
+    // longer TTL is safe and makes revisiting a search effectively instant.
+    private const val PROBE_TTL_MS = 30 * 60_000L
+    private const val SEARCH_TTL_MS = 30 * 60_000L
 
     private data class TimedProbe(val at: Long, val ok: Boolean)
     private data class TimedResults(val at: Long, val items: List<WorkingChannel>)
@@ -87,6 +89,12 @@ object BridgeTvCache {
                 searches[key] = entry.copy(items = kept)
             }
         }
+        flush()
+    }
+
+    /** Refresh gives recovered links another chance instead of trusting old 403s. */
+    fun clearDeadProbes() {
+        probes.entries.removeIf { !it.value.ok }
         flush()
     }
 

@@ -16,10 +16,13 @@ import java.util.concurrent.TimeUnit
  */
 object StreamProbe {
 
+    // Dead CDN links are the norm on public add-ons. Keep the per-request
+    // ceiling low so one unreachable host can't stall the whole search; the
+    // caller also enforces an overall time budget.
     private val client = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)
-        .callTimeout(12, TimeUnit.SECONDS)
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(6, TimeUnit.SECONDS)
+        .callTimeout(8, TimeUnit.SECONDS)
         .followRedirects(true)
         .followSslRedirects(true)
         .build()

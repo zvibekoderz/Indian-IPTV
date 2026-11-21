@@ -55,10 +55,13 @@ import com.indian.iptv.mobile.data.WorkingChannel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Dedicated tab for the live `tv` catalogues of a Stremio-compatible add-on
@@ -135,15 +138,19 @@ fun BridgeTvScreen(
         checkError = null
         val term = query.trim()
 
-        // Fetch EVERY tv catalogue, capping each one, then interleave them
-        // round-robin. Concatenating them and taking the first N used to let a
-        // single large catalogue fill the whole list, so later catalogues were
-        // never searched at all — this fixes "not searching in all repos".
-        val perCatalog = catalogs.map { catalog ->
-            val metas = runCatching {
-                client.catalog(catalog.type, catalog.id, term.ifEmpty { null })
-            }.getOrDefault(emptyList())
-            catalog.name to metas.take(PER_CATALOG_LIMIT)
+        // Fetch EVERY tv catalogue IN PARALLEL, capping each one, then
+        // interleave round-robin. Concatenating sequentially made "All TV" as
+        // slow as the sum of all catalogue latencies, and a single large
+        // catalogue could fill the whole list before later ones were read.
+        val perCatalog = coroutineScope {
+            catalogs.map { catalog ->
+                async(Dispatchers.IO) {
+                    val metas = runCatching {
+                        client.catalog(catalog.type, catalog.id, term.ifEmpty { null })
+                    }.getOrDefault(emptyList())
+                    catalog.name to metas.take(PER_CATALOG_LIMIT)
+                }
+            }.awaitAll()
         }
         if (perCatalog.all { it.second.isEmpty() }) {
             checkError = "Couldn't load channels from any catalogue"
@@ -169,10 +176,19 @@ fun BridgeTvScreen(
             return@LaunchedEffect
         }
 
+        // Stream verified channels into the list as each probe completes, so
+        // the UI fills up progressively instead of sitting on a spinner until
+        // the last URL is checked. A hard budget guarantees the search settles
+        // even when a host hangs: whatever was verified by then is shown/cached.
+        results = emptyList()
         val permits = Semaphore(PROBE_CONCURRENCY)
-        val working = coroutineScope {
-            limited.map { (meta, catalogName) ->
-                async(Dispatchers.IO) {
+        val verified = Channel<ProbeResult>(Channel.UNLIMITED)
+        val found = mutableListOf<WorkingChannel>()
+        val deadline = System.currentTimeMillis() + SEARCH_BUDGET_MS
+        var timedOut = false
+        coroutineScope {
+            val jobs = limited.map { (meta, catalogName) ->
+                launch(Dispatchers.IO) {
                     permits.withPermit {
                         val streams = runCatching { client.streams(meta.type, meta.id) }
                             .getOrDefault(emptyList())
@@ -181,13 +197,34 @@ fun BridgeTvScreen(
                             cached ?: StreamProbe.isPlayable(stream.url, stream.headers)
                                 .also { BridgeTvCache.putProbe(stream.url, it) }
                         }
-                        playable?.let { WorkingChannel(meta, it, catalogName) }
+                        verified.send(ProbeResult(playable?.let { WorkingChannel(meta, it, catalogName) }))
                     }
                 }
-            }.awaitAll().filterNotNull()
+            }
+            var received = 0
+            while (received < limited.size) {
+                val remaining = deadline - System.currentTimeMillis()
+                if (remaining <= 0) {
+                    timedOut = true
+                    break
+                }
+                val item = withTimeoutOrNull(remaining) { verified.receive() }
+                if (item == null) {
+                    timedOut = true
+                    break
+                }
+                received++
+                item.channel?.let { channel ->
+                    found += channel
+                    results = found.toList()
+                }
+            }
+            jobs.forEach { it.cancel() }
         }
-        BridgeTvCache.putResults(cacheKey, working)
-        results = working
+        // Only cache a complete sweep — a timed-out partial list should be
+        // retried on the next visit rather than frozen for the whole TTL.
+        if (!timedOut) BridgeTvCache.putResults(cacheKey, found)
+        results = found
         checking = false
     }
 
@@ -198,6 +235,7 @@ fun BridgeTvScreen(
                 actions = {
                     IconButton(
                         onClick = {
+                            BridgeTvCache.clearDeadProbes()
                             BridgeTvCache.clearResults(cacheKey)
                             refreshKey++
                         },
@@ -399,6 +437,10 @@ fun BridgeTvScreen(
     }
 }
 
+/** Non-null envelope so a null probe result isn't confused with a timeout. */
+private data class ProbeResult(val channel: WorkingChannel?)
+
 private const val PER_CATALOG_LIMIT = 20
 private const val MAX_CANDIDATES = 60
-private const val PROBE_CONCURRENCY = 6
+private const val PROBE_CONCURRENCY = 10
+private const val SEARCH_BUDGET_MS = 45_000L

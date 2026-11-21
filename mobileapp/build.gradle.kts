@@ -20,8 +20,8 @@ android {
         // Android 9 (API 28) floor, per project requirement.
         minSdk = 28
         targetSdk = 34
-        versionCode = 13
-        versionName = "1.7.0"
+        versionCode = 14
+        versionName = "1.8.0"
     }
 
     signingConfigs {
