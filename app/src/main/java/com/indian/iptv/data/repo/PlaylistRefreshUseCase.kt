@@ -162,13 +162,17 @@ class PlaylistRefreshUseCase(
             settings.markEpgRefresh()
             val t3 = SystemClock.elapsedRealtime()
             Log.i(TAG, "persisted ${snapshot.programmes.size} EPG programmes in ${t3 - t2}ms")
+        } else {
+            // M3U snapshots carry no guide. Populate Now/Next from the bundled tvepg
+            // feeds in the same refresh, now that the enriched epgChannelIds are stored.
+            epgMutex.withLock { runCatching { writeEpg(repo) } }
         }
     }
 
     companion object {
         private const val TAG = "PlaylistRefresh"
         /** Bump when the stored catalogue gains data that only a full reload fills in. */
-        const val CATALOGUE_VERSION = 15
+        const val CATALOGUE_VERSION = 16
         const val EPG_MAX_AGE_MS: Long = 6L * 3_600_000L
     }
 }

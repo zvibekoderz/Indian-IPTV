@@ -63,6 +63,14 @@ import com.indian.iptv.ui.theme.IptvTheme
 class PlayerActivity : ComponentActivity() {
 
     private var player: ExoPlayer? = null
+
+    /**
+     * Headers for the stream currently being played (from a Stremio-compatible add-on).
+     * OkHttp reads this from its IO threads, so it must be thread-safe.
+     */
+    private val playbackHeaders =
+        java.util.concurrent.atomic.AtomicReference<Map<String, String>>(emptyMap())
+
     /**
      * Live ref to the embedded PlayerView. Stored so onKeyDown can forward D-pad events to
      * the built-in controller (seek, pause, subtitle button) that the user can't otherwise
@@ -298,6 +306,8 @@ class PlayerActivity : ComponentActivity() {
         val adhocUrls = intent.getStringArrayExtra(EXTRA_ADHOC_URLS)
         val adhocNames = intent.getStringArrayExtra(EXTRA_ADHOC_NAMES)
         val adhocType = intent.getStringExtra(EXTRA_ADHOC_TYPE)
+        val adhocUserAgents = intent.getStringArrayExtra(EXTRA_ADHOC_USER_AGENTS)
+        val adhocReferrers = intent.getStringArrayExtra(EXTRA_ADHOC_REFERRERS)
 
         seriesMeta = intent.getStringExtra(EXTRA_SERIES_CHANNEL_ID)?.let { seriesId ->
             SeriesMeta(
@@ -328,6 +338,8 @@ class PlayerActivity : ComponentActivity() {
                             streamUrl = adhocUrls[i],
                             epgChannelId = null,
                             type = type,
+                            userAgent = adhocUserAgents?.getOrNull(i),
+                            referrer = adhocReferrers?.getOrNull(i),
                         )
                     }
                 }
@@ -402,7 +414,18 @@ class PlayerActivity : ComponentActivity() {
                     DefaultTsPayloadReaderFactory.FLAG_ENABLE_HDMV_DTS_AUDIO_STREAMS,
             )
         // OkHttp follows http→https / load-balancer redirects that DefaultHttpDataSource refuses.
-        val dataSourceFactory = DefaultDataSource.Factory(this, OkHttpDataSource.Factory(HttpClient.streaming))
+        // Some add-on/CDN streams are hotlink-protected and need a User-Agent/Referer. Applying
+        // them here (rather than via MediaItem request headers) makes sure they reach HLS
+        // playlist *and* segment requests, which are issued later by the HLS source.
+        val headerInterceptor = okhttp3.Interceptor { chain ->
+            val request = chain.request().newBuilder()
+            playbackHeaders.get().forEach { (name, value) -> request.header(name, value) }
+            chain.proceed(request.build())
+        }
+        val streamClient = HttpClient.streaming.newBuilder()
+            .addInterceptor(headerInterceptor)
+            .build()
+        val dataSourceFactory = DefaultDataSource.Factory(this, OkHttpDataSource.Factory(streamClient))
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory)
         val p = ExoPlayer.Builder(this, renderersFactory)
             .setMediaSourceFactory(mediaSourceFactory)
@@ -499,9 +522,22 @@ class PlayerActivity : ComponentActivity() {
                 // Fall through: pop a full-screen overlay rather than a Toast — on TV a
                 // 2-line toast in the corner is easy to miss, and the user then sits
                 // staring at a black screen wondering whether to touch anything.
+                // Surface the actual HTTP status when the server rejected the stream —
+                // "BAD_HTTP_STATUS" alone doesn't say whether it was a 403 (headers/expired
+                // link) or a 404/5xx (dead URL / provider issue).
+                val httpStatus = generateSequence(error.cause) { it.cause }
+                    .filterIsInstance<androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException>()
+                    .firstOrNull()?.responseCode
+                // A Bridge TV channel can pass the reachability probe yet die during
+                // real playback when its signed CDN token expires. Blacklist that URL
+                // so the Bridge TV screen hides it from cached results until TTL expiry.
+                if (channel?.id?.startsWith("addon:") == true) {
+                    channel.streamUrl?.let { com.indian.iptv.data.addon.BridgeTvCache.markDead(it) }
+                }
                 errorOverlay = ErrorState(
                     channelName = channel?.name.orEmpty(),
-                    message = error.message ?: error.errorCodeName,
+                    message = httpStatus?.let { "HTTP $it · ${error.errorCodeName}" }
+                        ?: error.message ?: error.errorCodeName,
                     canSkip = channels.size > 1,
                 )
             }
@@ -660,11 +696,20 @@ class PlayerActivity : ComponentActivity() {
         frameRateProbe.reset()
         frameRateJob?.cancel()
         loadLiveProgramme(channel)
+        // Install this channel's headers before prepare() so the very first media request
+        // carries them. Clearing on every channel change prevents headers leaking to the next.
+        playbackHeaders.set(
+            buildMap {
+                channel.userAgent?.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
+                channel.referrer?.takeIf { it.isNotBlank() }?.let { put("Referer", it) }
+            },
+        )
         val p = player ?: return
+        val mediaItem = MediaItem.fromUri(url)
         if (resumeMs > 0L) {
-            p.setMediaItem(MediaItem.fromUri(url), resumeMs)
+            p.setMediaItem(mediaItem, resumeMs)
         } else {
-            p.setMediaItem(MediaItem.fromUri(url))
+            p.setMediaItem(mediaItem)
         }
         p.prepare()
         val app = IptvApp.get()
@@ -945,13 +990,18 @@ class PlayerActivity : ComponentActivity() {
             return
         }
         val current = channels.getOrNull(currentIndex)
+        // Prefer the group that actually CONTAINS the playing channel: a favourite lives in
+        // both the favourites group and its category group, and matching the category title
+        // first made long-press OK open a category list instead of Favourites when the
+        // channel was started from the favourites rail (the home rail title differs from
+        // the player's favourites label, so a title match is also unreliable there).
         val byTitle = channelGroups.indexOfFirst { g -> g.title == current?.groupTitle }
         val containing = channelGroups.indexOfFirst { g -> g.channels.any { it.id == current?.id } }
         channelGroupIndex = when {
             channels.size == channelGroups.firstOrNull()?.channels?.size &&
                 channelGroups.firstOrNull()?.channels?.any { it.id == current?.id } == true -> 0
-            byTitle >= 0 -> byTitle
             containing >= 0 -> containing
+            byTitle >= 0 -> byTitle
             else -> 0
         }
         controlsVisible = false
@@ -1429,6 +1479,8 @@ class PlayerActivity : ComponentActivity() {
         const val EXTRA_ADHOC_URLS = "adhoc_urls"
         const val EXTRA_ADHOC_NAMES = "adhoc_names"
         const val EXTRA_ADHOC_TYPE = "adhoc_type"
+        const val EXTRA_ADHOC_USER_AGENTS = "adhoc_user_agents"
+        const val EXTRA_ADHOC_REFERRERS = "adhoc_referrers"
 
         /** Content type whose full playable list is the zap list; used instead of huge id arrays. */
         const val EXTRA_SCOPE_TYPE = "scope_type"

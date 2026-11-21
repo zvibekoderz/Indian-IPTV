@@ -31,6 +31,7 @@ import com.indian.iptv.data.AdultContent
 import com.indian.iptv.data.repo.PlaylistRefreshUseCase
 import com.indian.iptv.data.Channel
 import com.indian.iptv.data.ContentType
+import com.indian.iptv.data.LanguageGroups
 import com.indian.iptv.data.db.WatchedEpisodeEntity
 import com.indian.iptv.data.db.toDomain
 import com.indian.iptv.data.tmdb.MovieMatcher
@@ -295,7 +296,11 @@ private object ChannelsDerivations {
                 grouped.forEach { (cat, chs) ->
                     if (cat != ChannelsUiState.UNCATEGORIZED && cat !in categories) add(cat to chs)
                 }
-            }.map { (title, chs) -> Rail(title, chs.take(ChannelsUiState.MAX_PER_RAIL)) }
+            }
+                // Language-named rails ("Hindi", "Tamil", …) bury the real genres on the
+                // home screen — drop them here; the channels stay reachable via Categories.
+                .filterNot { (title, _) -> LanguageGroups.isLanguageTitle(title) }
+                .map { (title, chs) -> Rail(title, chs.take(ChannelsUiState.MAX_PER_RAIL)) }
             addAll(categoryRails.take(ChannelsUiState.MAX_RAILS - size))
         }.distinctBy { it.title }
     }

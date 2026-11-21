@@ -24,4 +24,7 @@ data class Channel(
     val number: Int? = null,
     /** True when the stream or name indicates HD/720p/1080p/4K. */
     val isHd: Boolean = false,
+    /** Headers required by some add-on/CDN streams (e.g. hotlink-protected links). */
+    val userAgent: String? = null,
+    val referrer: String? = null,
 )

@@ -3,12 +3,12 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
-    <!-- Required=false on both features so the SAME apk installs on phones/tablets
-         (Android 9+) and on Android TV: neither form factor is mandatory. -->
     <uses-feature
         android:name="android.software.leanback"
-        android:required="false" />
+        android:required="true" />
     <uses-feature
         android:name="android.hardware.touchscreen"
         android:required="false" />
@@ -31,11 +31,7 @@
             android:screenOrientation="landscape">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-                <!-- Both launcher categories: shows up in the TV launcher AND the
-                     phone/tablet app drawer from the same install. -->
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
-                <category android:name="android.intent.category.LAUNCHER" />
-                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 
@@ -46,6 +42,26 @@
             android:launchMode="singleTask"
             android:screenOrientation="landscape"
             android:theme="@style/Theme.Iptv.Player" />
+
+        <!--
+            Best-effort CNCVerse Bridge auto-launch after boot. Bridge's own licence
+            forbids modifying it, and its service is not exported, so we can only
+            open its UI from our app — not start its server for it.
+        -->
+        <receiver
+            android:name=".boot.BridgeBootReceiver"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".boot.BridgeLaunchService"
+            android:exported="false" />
 
     </application>
 

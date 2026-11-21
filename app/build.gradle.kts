@@ -22,17 +22,26 @@ android {
 
     defaultConfig {
         applicationId = "com.indian.iptv"
-        // Android 9 (API 28) is the floor so the same APK also installs on phones/tablets:
-        // the codebase has no API-29+ calls (no Build.VERSION guards needed anywhere).
-        minSdk = 28
+        // TV app baseline: Android TV 10+ (API 29). Phone users install the
+        // separate :mobileapp module (com.indian.iptv.mobile).
+        minSdk = 29
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 8
+        versionName = "0.7.0"
 
         buildConfigField("String", "TMDB_BEARER_TOKEN", "\"$tmdbBearerToken\"")
     }
 
     signingConfigs {
+        // Stable project debug key, checked in so every local/CI debug build has the SAME
+        // signature. Without this, each machine's auto-generated ~/.android/debug.keystore
+        // produces a different signature and Android refuses to install over the old app.
+        getByName("debug") {
+            storeFile = rootProject.file("signing/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         // Release keystore from local.properties; without it release builds fall back to the
         // debug key (fine for sideloading, not for distribution).
         val storeFilePath = localProps.getProperty("RELEASE_STORE_FILE")
@@ -49,6 +58,7 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
         }
         release {
             // R8 + resource shrinking shave significant size off the APK and remove a chunk
@@ -142,4 +152,6 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    // org.json ships with Android; needed only for JVM unit tests of add-on parsing.
+    testImplementation("org.json:json:20240303")
 }
