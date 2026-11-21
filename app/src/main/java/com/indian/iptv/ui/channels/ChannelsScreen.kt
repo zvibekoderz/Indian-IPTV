@@ -2775,8 +2775,8 @@ private fun FocusableCard(
                 if (focused) Modifier.shadow(
                     elevation = 12.dp,
                     shape = shape,
-                    ambientColor = IptvPalette.AccentSoft.copy(alpha = 0.30f),
-                    spotColor = IptvPalette.AccentSoft.copy(alpha = 0.85f),
+                    ambientColor = Color.White.copy(alpha = 0.18f),
+                    spotColor = Color.White.copy(alpha = 0.55f),
                 ) else Modifier,
             )
             .scale(scale)
@@ -2785,13 +2785,12 @@ private fun FocusableCard(
             .onFocusChanged { focused = it.isFocused }
             .then(
                 if (focused)
-                    // Original TV highlight: accent gradient ring + red glow, so the
-                    // focused channel reads clearly against dark artwork and logos.
+                    // Clean white focus ring matching the app — a solid bright outline
+                    // reads clearly on every logo/poster and stays consistent with the
+                    // rest of the navigation chrome. Pink is reserved for "selected".
                     Modifier.border(
-                        width = 2.dp,
-                        brush = Brush.linearGradient(
-                            listOf(IptvPalette.Accent, IptvPalette.AccentSoft),
-                        ),
+                        width = 3.dp,
+                        color = Color.White,
                         shape = shape,
                     )
                 else Modifier,
