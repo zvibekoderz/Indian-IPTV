@@ -20,8 +20,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -68,7 +68,6 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -90,9 +89,11 @@ import androidx.tv.foundation.lazy.list.TvLazyColumn
 import androidx.tv.foundation.lazy.list.TvLazyRow
 import androidx.tv.foundation.lazy.list.items
 import androidx.tv.foundation.lazy.list.itemsIndexed
+import androidx.tv.material3.Border
 import androidx.tv.material3.Button
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.Glow
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
@@ -2769,32 +2770,24 @@ private fun FocusableCard(
             focusedContentColor = IptvPalette.TextPrimary,
         ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+        // Draw the white ring through the Surface's OWN focus state machine (not an external
+        // Modifier.border), so it is painted as part of focus and stays put. The default
+        // tv-material glow is what produced the glossy shine — disable it entirely.
+        border = ClickableSurfaceDefaults.border(
+            focusedBorder = Border(BorderStroke(3.dp, Color.White), 0.dp, shape),
+            pressedBorder = Border(BorderStroke(3.dp, Color.White), 0.dp, shape),
+        ),
+        glow = ClickableSurfaceDefaults.glow(
+            glow = Glow.None,
+            focusedGlow = Glow.None,
+            pressedGlow = Glow.None,
+        ),
         modifier = Modifier
             .size(width = width, height = height)
-            .then(
-                if (focused) Modifier.shadow(
-                    elevation = 12.dp,
-                    shape = shape,
-                    ambientColor = Color.White.copy(alpha = 0.18f),
-                    spotColor = Color.White.copy(alpha = 0.55f),
-                ) else Modifier,
-            )
             .scale(scale)
             .then(if (onLongClick != null) Modifier.okLongPress(onLongClick) else Modifier)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-            .onFocusChanged { focused = it.isFocused }
-            .then(
-                if (focused)
-                    // Clean white focus ring matching the app — a solid bright outline
-                    // reads clearly on every logo/poster and stays consistent with the
-                    // rest of the navigation chrome. Pink is reserved for "selected".
-                    Modifier.border(
-                        width = 3.dp,
-                        color = Color.White,
-                        shape = shape,
-                    )
-                else Modifier,
-            ),
+            .onFocusChanged { focused = it.isFocused },
     ) {
         content(focused)
     }
