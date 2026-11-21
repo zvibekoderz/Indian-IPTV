@@ -36,11 +36,22 @@ class Settings(context: Context) {
                 .apply()
         }
 
-    /** Favourited channel stream URLs. */
+    /** Favourited channel stream URLs (Live TV tab). */
     var favourites: Set<String>
         get() = prefs.getStringSet(KEY_FAVOURITES, emptySet()).orEmpty()
         set(value) {
             prefs.edit().putStringSet(KEY_FAVOURITES, value).apply()
+        }
+
+    /**
+     * Favourited Bridge TV channels, keyed by add-on meta ID rather than the
+     * stream URL — signed CDN links expire and are reissued, but a channel's
+     * meta ID stays the same, so the star survives link refreshes.
+     */
+    var bridgeFavourites: Set<String>
+        get() = prefs.getStringSet(KEY_BRIDGE_FAVOURITES, emptySet()).orEmpty()
+        set(value) {
+            prefs.edit().putStringSet(KEY_BRIDGE_FAVOURITES, value).apply()
         }
 
     /** Preferred player scale mode: 0 = Fit, 1 = Fill, 2 = Zoom. */
@@ -82,6 +93,7 @@ class Settings(context: Context) {
             "https://avkb.short.gy/epg.xml.gz,https://avkb.short.gy/jioepg.xml.gz,https://avkb.short.gy/tsepg.xml.gz"
         private const val KEY_URLS = "m3u_urls"
         private const val KEY_FAVOURITES = "favourite_urls"
+        private const val KEY_BRIDGE_FAVOURITES = "bridge_favourites"
         private const val KEY_SCALE_MODE = "scale_mode"
         private const val KEY_SCALE_RESET = "scale_mode_reset_v2"
         private const val KEY_EPG_URL = "epg_url"

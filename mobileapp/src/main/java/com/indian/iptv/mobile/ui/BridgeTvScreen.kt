@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -94,6 +96,15 @@ fun BridgeTvScreen(
     // would be slow and pointless when the user only ever looks at a screenful.
     var requested by remember { mutableStateOf(INITIAL_CANDIDATES) }
     var hasMore by remember { mutableStateOf(false) }
+    var bridgeFavourites by remember { mutableStateOf(settings.bridgeFavourites) }
+    var showFavouritesOnly by rememberSaveable { mutableStateOf(false) }
+
+    fun toggleFavourite(item: WorkingChannel) {
+        val key = item.meta.id
+        val next = if (key in bridgeFavourites) bridgeFavourites - key else bridgeFavourites + key
+        bridgeFavourites = next
+        settings.bridgeFavourites = next
+    }
 
     val tvCatalogs = manifest?.catalogs?.filter { it.type.equals("tv", ignoreCase = true) }.orEmpty()
     val catalogsKey = tvCatalogs.joinToString { "${it.type}/${it.id}" }
@@ -240,6 +251,16 @@ fun BridgeTvScreen(
         checking = false
     }
 
+    val visibleResults = remember(results, bridgeFavourites, showFavouritesOnly) {
+        val filtered = if (showFavouritesOnly) {
+            results.filter { it.meta.id in bridgeFavourites }
+        } else {
+            results
+        }
+        // Keep stars at the top so favourites are always one tap away.
+        filtered.sortedByDescending { it.meta.id in bridgeFavourites }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -321,8 +342,23 @@ fun BridgeTvScreen(
                 ) {
                     item {
                         FilterChip(
-                            selected = selectedCatalogId.isEmpty(),
+                            selected = showFavouritesOnly,
+                            onClick = { showFavouritesOnly = !showFavouritesOnly },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Filled.Star,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            },
+                            label = { Text("Favourites") },
+                        )
+                    }
+                    item {
+                        FilterChip(
+                            selected = !showFavouritesOnly && selectedCatalogId.isEmpty(),
                             onClick = {
+                                showFavouritesOnly = false
                                 selectedCatalogId = ""
                                 requested = INITIAL_CANDIDATES
                             },
@@ -334,6 +370,7 @@ fun BridgeTvScreen(
                             selected = selectedCatalogId == catalog.id,
                             onClick = {
                                 selectedCatalogId = catalog.id
+                                showFavouritesOnly = false
                                 requested = INITIAL_CANDIDATES
                             },
                             label = { Text(catalog.name) },
@@ -368,7 +405,7 @@ fun BridgeTvScreen(
                 Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 24.dp),
             ) {
-                items(results, key = { it.meta.id + "|" + it.stream.url }) { item ->
+                items(visibleResults, key = { it.meta.id + "|" + it.stream.url }) { item ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -421,6 +458,18 @@ fun BridgeTvScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
+                        IconButton(onClick = { toggleFavourite(item) }) {
+                            val isFavourite = item.meta.id in bridgeFavourites
+                            Icon(
+                                imageVector = Icons.Filled.Star,
+                                contentDescription = if (isFavourite) {
+                                    "Remove from favourites"
+                                } else {
+                                    "Add to favourites"
+                                },
+                                tint = if (isFavourite) Color(0xFFFFC107) else Color(0xFF6F6F78),
+                            )
+                        }
                     }
                 }
 
@@ -439,7 +488,7 @@ fun BridgeTvScreen(
                     }
                 }
 
-                if (!checking && manifest != null && results.isEmpty()) {
+                if (!checking && manifest != null && visibleResults.isEmpty()) {
                     item {
                         Box(
                             Modifier
@@ -448,7 +497,11 @@ fun BridgeTvScreen(
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
-                                if (tvCatalogs.isEmpty()) {
+                                if (showFavouritesOnly && bridgeFavourites.isEmpty()) {
+                                    "No favourites yet — tap the star beside any channel to save it here."
+                                } else if (showFavouritesOnly) {
+                                    "None of your favourites are in the current results. They may be offline — switch off the Favourites filter to find others."
+                                } else if (tvCatalogs.isEmpty()) {
                                     "This add-on publishes no live TV catalogues."
                                 } else {
                                     "No working channels found. The add-on's links may be expired or offline — try another add-on or search again later."
