@@ -89,10 +89,15 @@ fun BridgeTvScreen(
     var checking by remember { mutableStateOf(false) }
     var checkError by remember { mutableStateOf<String?>(null) }
     var refreshKey by remember { mutableStateOf(0) }
+    // How many catalogue entries to probe. Grows via "Load more" because some
+    // catalogues hold well over a thousand channels — probing them all at once
+    // would be slow and pointless when the user only ever looks at a screenful.
+    var requested by remember { mutableStateOf(INITIAL_CANDIDATES) }
+    var hasMore by remember { mutableStateOf(false) }
 
     val tvCatalogs = manifest?.catalogs?.filter { it.type.equals("tv", ignoreCase = true) }.orEmpty()
     val catalogsKey = tvCatalogs.joinToString { "${it.type}/${it.id}" }
-    val cacheKey = BridgeTvCache.key(activeUrl, selectedCatalogId, query)
+    val cacheKey = BridgeTvCache.key(activeUrl, selectedCatalogId, query) + "|$requested"
 
     LaunchedEffect(activeUrl) {
         val instance = StremioAddon.create(activeUrl)
@@ -114,7 +119,7 @@ fun BridgeTvScreen(
         connecting = false
     }
 
-    LaunchedEffect(addon, catalogsKey, selectedCatalogId, query, refreshKey) {
+    LaunchedEffect(addon, catalogsKey, selectedCatalogId, query, refreshKey, requested) {
         val client = addon ?: run {
             results = emptyList()
             return@LaunchedEffect
@@ -124,6 +129,12 @@ fun BridgeTvScreen(
             results = emptyList()
             return@LaunchedEffect
         }
+        hasMore = false
+        // "All TV" only needs a small slice per catalogue (round-robin spreads
+        // the probe budget across all of them); a single selected catalogue may
+        // need the whole thing. Fetching thousands of metas × 21 catalogs would
+        // be needlessly slow and memory-hungry.
+        val poolLimit = if (selectedCatalogId.isEmpty()) ALL_TV_POOL_LIMIT else CATALOG_POOL_LIMIT
         // A previous search for this add-on/catalog/term is served instantly: no add-on
         // request and no re-probing. This survives tab switches and app restarts.
         BridgeTvCache.results(cacheKey)?.let { cached ->
@@ -148,7 +159,7 @@ fun BridgeTvScreen(
                     val metas = runCatching {
                         client.catalog(catalog.type, catalog.id, term.ifEmpty { null })
                     }.getOrDefault(emptyList())
-                    catalog.name to metas.take(PER_CATALOG_LIMIT)
+                    catalog.name to metas.take(poolLimit)
                 }
             }.awaitAll()
         }
@@ -167,9 +178,10 @@ fun BridgeTvScreen(
             }
         }
 
-        val limited = interleaved
+        val unique = interleaved
             .distinctBy { (meta, name) -> "$name|${meta.type}|${meta.id}" }
-            .take(MAX_CANDIDATES)
+        hasMore = unique.size > requested
+        val limited = unique.take(minOf(requested, MAX_CANDIDATES))
         if (limited.isEmpty()) {
             results = emptyList()
             checking = false
@@ -268,6 +280,7 @@ fun BridgeTvScreen(
                 onClick = {
                     settings.addonUrl = input
                     activeUrl = input
+                    requested = INITIAL_CANDIDATES
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -288,7 +301,10 @@ fun BridgeTvScreen(
 
             OutlinedTextField(
                 value = query,
-                onValueChange = { query = it },
+                onValueChange = {
+                    query = it
+                    requested = INITIAL_CANDIDATES
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp),
@@ -306,14 +322,20 @@ fun BridgeTvScreen(
                     item {
                         FilterChip(
                             selected = selectedCatalogId.isEmpty(),
-                            onClick = { selectedCatalogId = "" },
+                            onClick = {
+                                selectedCatalogId = ""
+                                requested = INITIAL_CANDIDATES
+                            },
                             label = { Text("All TV") },
                         )
                     }
                     items(tvCatalogs, key = { it.id }) { catalog ->
                         FilterChip(
                             selected = selectedCatalogId == catalog.id,
-                            onClick = { selectedCatalogId = catalog.id },
+                            onClick = {
+                                selectedCatalogId = catalog.id
+                                requested = INITIAL_CANDIDATES
+                            },
                             label = { Text(catalog.name) },
                         )
                     }
@@ -402,6 +424,21 @@ fun BridgeTvScreen(
                     }
                 }
 
+                if (hasMore && !checking && requested < MAX_CANDIDATES) {
+                    item {
+                        Button(
+                            onClick = {
+                                requested = minOf(requested + LOAD_MORE_STEP, MAX_CANDIDATES)
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                        ) {
+                            Text("Load more channels")
+                        }
+                    }
+                }
+
                 if (!checking && manifest != null && results.isEmpty()) {
                     item {
                         Box(
@@ -440,7 +477,10 @@ fun BridgeTvScreen(
 /** Non-null envelope so a null probe result isn't confused with a timeout. */
 private data class ProbeResult(val channel: WorkingChannel?)
 
-private const val PER_CATALOG_LIMIT = 20
-private const val MAX_CANDIDATES = 60
-private const val PROBE_CONCURRENCY = 10
-private const val SEARCH_BUDGET_MS = 45_000L
+private const val CATALOG_POOL_LIMIT = 2000
+private const val ALL_TV_POOL_LIMIT = 100
+private const val INITIAL_CANDIDATES = 120
+private const val LOAD_MORE_STEP = 120
+private const val MAX_CANDIDATES = 600
+private const val PROBE_CONCURRENCY = 14
+private const val SEARCH_BUDGET_MS = 90_000L
