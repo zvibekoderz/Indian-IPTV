@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Indian IPTV</string>
+    <string name="bridge_a11y_description">Automatically starts the CNCVerse Bridge server after the TV boots, by pressing its own Start Server button. Bridge remains an unmodified, separately installed app.</string>
 
     <string name="nav_channels">Channels</string>
     <string name="nav_settings">Settings</string>

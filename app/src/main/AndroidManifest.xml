@@ -63,6 +63,25 @@
             android:name=".boot.BridgeLaunchService"
             android:exported="false" />
 
+        <!--
+            License-safe full auto-start: reads Bridge's ordinary accessibility
+            tree and taps its own "Start Server" button. No Bridge code is
+            copied, modified, embedded or reflected into. The user must enable
+            this service once in Android accessibility settings.
+        -->
+        <service
+            android:name=".boot.BridgeStartAccessibilityService"
+            android:exported="true"
+            android:label="@string/bridge_a11y_description"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/bridge_accessibility_service_config" />
+        </service>
+
     </application>
 
 </manifest>
