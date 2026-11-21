@@ -74,6 +74,22 @@ object BridgeTvCache {
         flush()
     }
 
+    /**
+     * A stream that passed the probe but failed during real playback (e.g. its
+     * signed token expired in between). Hide it from every cached search and
+     * remember the failed probe so it stays out until its short TTL expires.
+     */
+    fun markDead(url: String) {
+        probes[url] = TimedProbe(System.currentTimeMillis(), false)
+        searches.forEach { (key, entry) ->
+            val kept = entry.items.filterNot { it.stream.url == url }
+            if (kept.size != entry.items.size) {
+                searches[key] = entry.copy(items = kept)
+            }
+        }
+        flush()
+    }
+
     /** Search cache key — a different add-on, catalog or query is a different result. */
     fun key(addonUrl: String, catalogId: String, query: String): String =
         "$addonUrl|$catalogId|${query.trim().lowercase()}"

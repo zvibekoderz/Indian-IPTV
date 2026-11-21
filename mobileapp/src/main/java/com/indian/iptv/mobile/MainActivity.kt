@@ -27,7 +27,6 @@ import androidx.core.view.WindowCompat
 import com.indian.iptv.mobile.data.BridgeTvCache
 import com.indian.iptv.mobile.data.Channel
 import com.indian.iptv.mobile.data.Epg
-import com.indian.iptv.mobile.data.M3uParser
 import com.indian.iptv.mobile.data.PlaylistFetcher
 import com.indian.iptv.mobile.data.RecentlyWatched
 import com.indian.iptv.mobile.data.Settings
@@ -58,16 +57,20 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/** Which tab was visible when the player was opened — where Back should return. */
-private enum class Tab { Live, Bridge, Settings }
-
+/** A tab/screen that lives underneath the full-screen player. */
 private sealed interface Screen {
     data object Channels : Screen
     data object BridgeTv : Screen
     data object Settings : Screen
     data object Addons : Screen
-    data class Player(val channel: Channel, val origin: Tab = Tab.Live) : Screen
 }
+
+/**
+ * The player is an overlay, not a navigation destination: the screen beneath
+ * it stays in the composition, so its scroll position, query and catalog
+ * filter are exactly where the user left them when they hit Back.
+ */
+private data class PlayerTarget(val channel: Channel)
 
 @Composable
 private fun AppRoot() {
@@ -79,6 +82,7 @@ private fun AppRoot() {
     val recent = remember { RecentlyWatched(context) }
 
     var screen by remember { mutableStateOf<Screen>(Screen.Channels) }
+    var player by remember { mutableStateOf<PlayerTarget?>(null) }
 
     var channels by remember { mutableStateOf<List<Channel>?>(null) }
     var loading by remember { mutableStateOf(false) }
@@ -113,14 +117,14 @@ private fun AppRoot() {
     fun openChannel(channel: Channel) {
         recent.record(channel)
         recentChannels = recent.all()
-        screen = Screen.Player(channel, Tab.Live)
+        player = PlayerTarget(channel)
     }
 
     // Load once on start: instant from cache when available, otherwise fetch.
     LaunchedEffect(Unit) {
         load(forceRefresh = false)
         // Continue watching: jump straight back into the last channel.
-        recentChannels.firstOrNull()?.let { screen = Screen.Player(it, Tab.Live) }
+        recentChannels.firstOrNull()?.let { player = PlayerTarget(it) }
     }
 
     // Load the XMLTV guide(s, cached up to 6h) whenever the setting is changed.
@@ -137,62 +141,49 @@ private fun AppRoot() {
         { channel: Channel -> Epg.lookup(epg, channel.tvgId, channel.name) }
     }
 
-    Column(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f)) {
-            when (val current = screen) {
-                Screen.Channels -> ChannelsScreen(
-                    channels = channels,
-                    loading = loading,
-                    error = error,
-                    favourites = favourites,
-                    onToggleFavourite = ::toggleFavourite,
-                    onOpenChannel = ::openChannel,
-                    onRefresh = { load(forceRefresh = true) },
-                    onOpenSettings = { screen = Screen.Settings },
-                    onOpenAddons = { screen = Screen.Addons },
-                    recent = recentChannels,
-                    nowNextOf = nowNextOf,
-                )
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f)) {
+                when (screen) {
+                    Screen.Channels -> ChannelsScreen(
+                        channels = channels,
+                        loading = loading,
+                        error = error,
+                        favourites = favourites,
+                        onToggleFavourite = ::toggleFavourite,
+                        onOpenChannel = ::openChannel,
+                        onRefresh = { load(forceRefresh = true) },
+                        onOpenSettings = { screen = Screen.Settings },
+                        onOpenAddons = { screen = Screen.Addons },
+                        recent = recentChannels,
+                        nowNextOf = nowNextOf,
+                    )
 
-                Screen.BridgeTv -> BridgeTvScreen(
-                    settings = settings,
-                    onOpenCatalogs = { screen = Screen.Addons },
-                    onPlay = { channel -> screen = Screen.Player(channel, Tab.Bridge) },
-                )
+                    Screen.BridgeTv -> BridgeTvScreen(
+                        settings = settings,
+                        onOpenCatalogs = { screen = Screen.Addons },
+                        onPlay = { channel -> player = PlayerTarget(channel) },
+                    )
 
-                Screen.Settings -> SettingsScreen(
-                    settings = settings,
-                    onSave = {
-                        screen = Screen.Channels
-                        channels = null
-                        load(forceRefresh = true)
-                    },
-                    onBack = { screen = Screen.Channels },
-                )
+                    Screen.Settings -> SettingsScreen(
+                        settings = settings,
+                        onSave = {
+                            screen = Screen.Channels
+                            channels = null
+                            load(forceRefresh = true)
+                        },
+                        onBack = { screen = Screen.Channels },
+                    )
 
-                Screen.Addons -> AddonsScreen(
-                    settings = settings,
-                    onBack = { screen = Screen.BridgeTv },
-                    onPlay = { channel -> screen = Screen.Player(channel, Tab.Bridge) },
-                )
-
-                is Screen.Player -> PlayerScreen(
-                    channel = current.channel,
-                    settings = settings,
-                    nowPlaying = nowNextOf(current.channel),
-                    onClose = {
-                        screen = when (current.origin) {
-                            Tab.Live -> Screen.Channels
-                            Tab.Bridge -> Screen.BridgeTv
-                            Tab.Settings -> Screen.Settings
-                        }
-                    },
-                )
+                    Screen.Addons -> AddonsScreen(
+                        settings = settings,
+                        onBack = { screen = Screen.BridgeTv },
+                        onPlay = { channel -> player = PlayerTarget(channel) },
+                    )
+                }
             }
-        }
 
-        // The player stays full-screen; every other screen gets the three tabs.
-        if (screen !is Screen.Player) {
+            // Every non-playing screen gets the three tabs.
             NavigationBar {
                 NavigationBarItem(
                     selected = screen == Screen.Channels,
@@ -213,6 +204,18 @@ private fun AppRoot() {
                     label = { Text("Settings") },
                 )
             }
+        }
+
+        // Drawn last so it covers everything, including the nav bar and any
+        // insets, while the underlying tab is preserved untouched.
+        player?.let { target ->
+            PlayerScreen(
+                channel = target.channel,
+                settings = settings,
+                nowPlaying = nowNextOf(target.channel),
+                onClose = { player = null },
+                onPlaybackError = { url -> BridgeTvCache.markDead(url) },
+            )
         }
     }
 }

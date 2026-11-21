@@ -37,6 +37,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -88,6 +89,7 @@ fun PlayerScreen(
     settings: Settings,
     nowPlaying: Epg.NowNext?,
     onClose: () -> Unit,
+    onPlaybackError: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     // LocalContext can be a ContextThemeWrapper on some OEM builds; walk the
@@ -210,6 +212,9 @@ fun PlayerScreen(
     var isPlaying by remember { mutableStateOf(false) }
     var videoSizeText by remember { mutableStateOf("") }
 
+    // Keep the callback current without rebuilding the ExoPlayer listener.
+    val onPlaybackErrorCurrent = rememberUpdatedState(onPlaybackError)
+
     val listener = remember(channel.url) {
         object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
@@ -237,6 +242,11 @@ fun PlayerScreen(
                     .firstOrNull()?.responseCode
                 errorMessage = httpStatus?.let { "HTTP $it · ${error.errorCodeName.removePrefix("ERROR_")}" }
                     ?: error.errorCodeName.removePrefix("ERROR_")
+                // A definitive 4xx/5xx means this exact link is dead. Tell the
+                // Bridge cache so it is filtered out on the next visit.
+                if (httpStatus != null && httpStatus >= 400) {
+                    onPlaybackErrorCurrent.value.invoke(channel.url)
+                }
             }
         }
     }

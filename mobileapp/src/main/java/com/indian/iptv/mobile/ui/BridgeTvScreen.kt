@@ -134,22 +134,34 @@ fun BridgeTvScreen(
         checking = true
         checkError = null
         val term = query.trim()
-        val candidates = mutableListOf<Pair<StremioAddon.Meta, String>>()
-        val failure = runCatching {
-            catalogs.forEach { catalog ->
+
+        // Fetch EVERY tv catalogue, capping each one, then interleave them
+        // round-robin. Concatenating them and taking the first N used to let a
+        // single large catalogue fill the whole list, so later catalogues were
+        // never searched at all — this fixes "not searching in all repos".
+        val perCatalog = catalogs.map { catalog ->
+            val metas = runCatching {
                 client.catalog(catalog.type, catalog.id, term.ifEmpty { null })
-                    .forEach { candidates += it to catalog.name }
-            }
-        }.exceptionOrNull()
-        if (failure != null) {
-            checkError = failure.message ?: "Couldn't load channels"
+            }.getOrDefault(emptyList())
+            catalog.name to metas.take(PER_CATALOG_LIMIT)
+        }
+        if (perCatalog.all { it.second.isEmpty() }) {
+            checkError = "Couldn't load channels from any catalogue"
             results = emptyList()
             checking = false
             return@LaunchedEffect
         }
 
-        val limited = candidates
-            .distinctBy { (meta, _) -> meta.type + "|" + meta.id }
+        val interleaved = mutableListOf<Pair<StremioAddon.Meta, String>>()
+        val longest = perCatalog.maxOf { it.second.size }
+        for (index in 0 until longest) {
+            perCatalog.forEach { (name, metas) ->
+                if (index < metas.size) interleaved += metas[index] to name
+            }
+        }
+
+        val limited = interleaved
+            .distinctBy { (meta, name) -> "$name|${meta.type}|${meta.id}" }
             .take(MAX_CANDIDATES)
         if (limited.isEmpty()) {
             results = emptyList()
@@ -387,5 +399,6 @@ fun BridgeTvScreen(
     }
 }
 
-private const val MAX_CANDIDATES = 40
+private const val PER_CATALOG_LIMIT = 20
+private const val MAX_CANDIDATES = 60
 private const val PROBE_CONCURRENCY = 6
