@@ -233,10 +233,18 @@ fun BridgeTvScreen(
         delay(300)
         val term = query.trim()
         val cachedById = cachedChannels.associateBy { "${it.catalogName}|${it.meta.type}|${it.meta.id}" }
+        // Udaya/Kannada sources first, then JTV/Jio. Bridge's server starts
+        // returning empty catalogues after many large payloads, and JTV sits at
+        // the end of the manifest, so it must not be left until last.
         val ordered = catalogs.withIndex()
             .sortedWith(
                 compareByDescending<IndexedValue<StremioAddon.Catalog>> { (_, catalog) ->
-                    AUTO_FAVOURITE_TERMS.any { it in catalog.name.lowercase() }
+                    val name = catalog.name.lowercase()
+                    when {
+                        AUTO_FAVOURITE_TERMS.any { it in name } -> 2
+                        PRIORITY_CATALOG_TERMS.any { it in name } -> 1
+                        else -> 0
+                    }
                 }.thenBy { it.index },
             )
             .map { it.value }
@@ -310,12 +318,18 @@ fun BridgeTvScreen(
 
     // Phase 2: keep probing as batches arrive. Udaya/Kannada matches jump the queue
     // so they are stream-checked and starred without waiting for every other channel.
-    LaunchedEffect(addon, poolKey, cataloguesReady) {
+    LaunchedEffect(addon, poolKey, cataloguesReady, loadingMore) {
         if (!cataloguesReady) return@LaunchedEffect
         val client = addon ?: return@LaunchedEffect
         while (isActive) {
             val pending = synchronized(entriesLock) {
-                entries.filter { it.state == ProbeState.PENDING && it.id !in deadEntryIds }
+                // Only Udaya/Kannada rows are probed while catalogues are still
+                // loading; full probing resumes once all catalogues are fetched.
+                entries.filter {
+                    it.state == ProbeState.PENDING &&
+                        it.id !in deadEntryIds &&
+                        (!loadingMore || it.isAutoFavourite())
+                }
                     .sortedByDescending { it.isAutoFavourite() }
                     .take(PROBE_BATCH_PER_SWEEP)
             }
@@ -730,6 +744,10 @@ private enum class ProbeState { PENDING, WORKING }
 // spelling of Udaya in Bridge listings).
 private val AUTO_FAVOURITE_TERMS = listOf("udya", "udaya", "kannada")
 
+// JTV/Jio catalogues sit at the end of Bridge's manifest and get starved when
+// the server is busy generating earlier catalogues.
+private val PRIORITY_CATALOG_TERMS = listOf("jtv", "jio")
+
 private fun ChannelEntry.isAutoFavourite(): Boolean {
     val text = "${meta.name} $catalogName".lowercase()
     return AUTO_FAVOURITE_TERMS.any { it in text }
@@ -776,10 +794,12 @@ private val WorkingChannel.id: String get() = "$catalogName|${meta.type}|${meta.
 // checked set grows across sessions.
 private const val PROBE_BATCH_PER_SWEEP = 200
 private const val PROBE_PERSIST_EVERY = 25
-private const val PROBE_CONCURRENCY = 8
+private const val PROBE_CONCURRENCY = 4
 private const val PROBE_IDLE_MS = 600L
-private const val PROBE_SWEEP_PAUSE_MS = 200L
-private const val CATALOG_BATCH_SIZE = 2
-private const val CATALOG_BATCH_PAUSE_MS = 400L
-private const val CATALOG_FETCH_CONCURRENCY = 2
+private const val PROBE_SWEEP_PAUSE_MS = 400L
+// Fetch one catalogue at a time: concurrent multi-megabyte responses plus
+// stream probes made Bridge return empty JTV catalogues.
+private const val CATALOG_BATCH_SIZE = 1
+private const val CATALOG_BATCH_PAUSE_MS = 1000L
+private const val CATALOG_FETCH_CONCURRENCY = 1
 private const val MANIFEST_RETRY_MS = 5_000L

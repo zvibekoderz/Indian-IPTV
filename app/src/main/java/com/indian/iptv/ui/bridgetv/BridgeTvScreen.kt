@@ -278,12 +278,20 @@ fun BridgeTvScreen(
         delay(300)
         val term = query.trim()
         val cachedById = cachedChannels.associateBy { "${it.catalogName}|${it.meta.type}|${it.meta.id}" }
-        // Udaya/Kannada catalogues go first so those channels are found in the
-        // first visible batch instead of after a long 20k-channel sweep.
+        // Load the catalogues that actually carry the wanted channels first.
+        // Bridge starts returning empty catalogues after generating too many
+        // 1-4MB payloads in a row, so a late JTV/Jio catalogue can come back empty
+        // even though it has hundreds of rows when the server is fresh.
+        // Udaya/Kannada first, then JTV/Jio, then everything else.
         val ordered = catalogs.withIndex()
             .sortedWith(
                 compareByDescending<IndexedValue<StremioAddon.Catalog>> { (_, catalog) ->
-                    AUTO_FAVOURITE_TERMS.any { it in catalog.name.lowercase() }
+                    val name = catalog.name.lowercase()
+                    when {
+                        AUTO_FAVOURITE_TERMS.any { it in name } -> 2
+                        PRIORITY_CATALOG_TERMS.any { it in name } -> 1
+                        else -> 0
+                    }
                 }.thenBy { it.index },
             )
             .map { it.value }
@@ -357,12 +365,21 @@ fun BridgeTvScreen(
 
     // Phase 2: keep probing as batches arrive. Udaya/Kannada matches jump the queue
     // so they are stream-checked and starred without waiting for every other channel.
-    LaunchedEffect(addon, poolKey, cataloguesReady) {
+    LaunchedEffect(addon, poolKey, cataloguesReady, loadingMore) {
         if (!cataloguesReady) return@LaunchedEffect
         val client = addon ?: return@LaunchedEffect
         while (isActive) {
             val pending = synchronized(entriesLock) {
-                entries.filter { it.state == ProbeState.PENDING && it.id !in deadEntryIds }
+                // While catalogues are still loading, only stream-check the
+                // Udaya/Kannada rows. Full probing waits until the catalogues are
+                // done so Bridge isn't serving stream lookups and multi-megabyte
+                // catalogue payloads at the same time — that combination was
+                // making later (JTV) catalogues come back empty on TV.
+                entries.filter {
+                    it.state == ProbeState.PENDING &&
+                        it.id !in deadEntryIds &&
+                        (!loadingMore || it.isAutoFavourite())
+                }
                     .sortedByDescending { it.isAutoFavourite() }
                     .take(PROBE_BATCH_PER_SWEEP)
             }
@@ -863,6 +880,10 @@ private enum class ProbeState { PENDING, WORKING }
 // common spelling and the "udya" spelling are covered.
 private val AUTO_FAVOURITE_TERMS = listOf("udya", "udaya", "kannada")
 
+// Bridge publishes JTV/Jio channels near the end of its 139-catalogue list.
+// They must be loaded before the server is worn down by the earlier catalogues.
+private val PRIORITY_CATALOG_TERMS = listOf("jtv", "jio")
+
 private var rememberedScrollIndex: Int = 0
 
 private fun ChannelEntry.isAutoFavourite(): Boolean {
@@ -911,10 +932,12 @@ private val WorkingChannel.id: String get() = "$catalogName|${meta.type}|${meta.
 // checked set grows across sessions.
 private const val PROBE_BATCH_PER_SWEEP = 200
 private const val PROBE_PERSIST_EVERY = 25
-private const val PROBE_CONCURRENCY = 8
+private const val PROBE_CONCURRENCY = 4
 private const val PROBE_IDLE_MS = 600L
-private const val PROBE_SWEEP_PAUSE_MS = 200L
-private const val CATALOG_BATCH_SIZE = 2
-private const val CATALOG_BATCH_PAUSE_MS = 400L
-private const val CATALOG_FETCH_CONCURRENCY = 2
+private const val PROBE_SWEEP_PAUSE_MS = 400L
+// One catalogue at a time. Bridge generates multi-megabyte JSON per catalogue;
+// two concurrent fetches plus stream probes exhausted it before JTV was reached.
+private const val CATALOG_BATCH_SIZE = 1
+private const val CATALOG_BATCH_PAUSE_MS = 1000L
+private const val CATALOG_FETCH_CONCURRENCY = 1
 private const val MANIFEST_RETRY_MS = 5_000L
