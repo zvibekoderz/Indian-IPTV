@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit
  *
  * A 200 on an HLS master playlist is not enough — providers routinely serve a
  * valid playlist whose segments 403/404. So for playlists we also resolve and
- * probe the first media entry. A URL only counts as working when both answer.
+ * probe the first few media entries; any one answering keeps the channel.
  */
 object StreamProbe {
 
@@ -20,9 +20,9 @@ object StreamProbe {
     // ceiling low so one unreachable host can't stall the whole search; the
     // caller also enforces an overall time budget.
     private val client = OkHttpClient.Builder()
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(6, TimeUnit.SECONDS)
-        .callTimeout(8, TimeUnit.SECONDS)
+        .connectTimeout(4, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
+        .callTimeout(7, TimeUnit.SECONDS)
         .followRedirects(true)
         .followSslRedirects(true)
         .build()
@@ -45,19 +45,27 @@ object StreamProbe {
                         return@withContext false
                     }
 
-                    val firstEntry = body.lineSequence()
+                    // Providers often publish several variants. A broken first entry
+                    // must not condemn an otherwise playable channel, so try a few.
+                    val entries = body.lineSequence()
                         .map { it.trim() }
                         .filter { it.isNotEmpty() && !it.startsWith("#") }
-                        .firstOrNull()
-                        ?: return@withContext false
+                        .take(MAX_PLAYLIST_ENTRIES)
+                        .mapNotNull { entry ->
+                            runCatching {
+                                URI.create(entry).takeIf { it.isAbsolute }?.toString()
+                                    ?: URI.create(url).resolve(entry).toString()
+                            }.getOrNull()
+                        }
+                        .toList()
+                    if (entries.isEmpty()) return@withContext false
 
-                    val absolute = runCatching {
-                        URI.create(firstEntry).takeIf { it.isAbsolute }?.toString()
-                            ?: URI.create(url).resolve(firstEntry).toString()
-                    }.getOrNull() ?: return@withContext false
-
-                    client.newCall(requestFor(absolute, headers)).execute().use { segment ->
-                        isSuccess(segment.code)
+                    entries.any { absolute ->
+                        runCatching {
+                            client.newCall(requestFor(absolute, headers)).execute().use { segment ->
+                                isSuccess(segment.code)
+                            }
+                        }.getOrDefault(false)
                     }
                 }
             }.getOrDefault(false)
@@ -76,6 +84,8 @@ object StreamProbe {
 
     private fun Map<String, String>.value(name: String): String? =
         entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value
+
+    private const val MAX_PLAYLIST_ENTRIES = 3
 
     private const val DEFAULT_USER_AGENT =
         "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36"

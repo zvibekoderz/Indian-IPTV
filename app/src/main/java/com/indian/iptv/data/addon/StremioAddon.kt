@@ -54,9 +54,11 @@ class StremioAddon private constructor(private val root: String) {
         parseStreams(getJson("$root/stream/${path(type)}/${path(id)}.json"))
 
     private suspend fun getJson(url: String): JSONObject = withContext(Dispatchers.IO) {
+        // Let OkHttp supply its default headers. An explicit Accept header was
+        // removed while investigating empty Bridge catalogues; it was not the
+        // cause, but the plain request is simpler and works for every add-on.
         val request = Request.Builder()
             .url(url)
-            .header("Accept", "application/json")
             .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {

@@ -1,5 +1,6 @@
 package com.indian.iptv.mobile.ui
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -36,6 +37,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -57,13 +59,14 @@ import com.indian.iptv.mobile.data.WorkingChannel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.channels.Channel as ProbeChannel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.withContext
 
 /**
  * Dedicated tab for the live `tv` catalogues of a Stremio-compatible add-on
@@ -85,21 +88,50 @@ fun BridgeTvScreen(
     var addonError by remember { mutableStateOf<String?>(null) }
     var connecting by remember { mutableStateOf(false) }
 
+    val scope = rememberCoroutineScope()
     var query by rememberSaveable { mutableStateOf("") }
     var selectedCatalogId by rememberSaveable { mutableStateOf("") }
-    var results by remember { mutableStateOf<List<WorkingChannel>>(emptyList()) }
-    var checking by remember { mutableStateOf(false) }
+    // Cached working rows appear first; the rest are appended in small catalogue
+    // batches so a busy Bridge cannot hide the whole list.
+    var entries by remember { mutableStateOf<List<ChannelEntry>>(emptyList()) }
+    var fetching by remember { mutableStateOf(false) }
+    var loadingMore by remember { mutableStateOf(false) }
+    var cataloguesReady by remember { mutableStateOf(false) }
+    var loadedCatalogCount by remember { mutableStateOf(0) }
+    var totalCatalogCount by remember { mutableStateOf(0) }
+    var probing by remember { mutableStateOf(false) }
+    var checkedCount by remember { mutableStateOf(0) }
     var checkError by remember { mutableStateOf<String?>(null) }
     var refreshKey by remember { mutableStateOf(0) }
-    // How many catalogue entries to probe. Grows via "Load more" because some
-    // catalogues hold well over a thousand channels — probing them all at once
-    // would be slow and pointless when the user only ever looks at a screenful.
-    var requested by remember { mutableStateOf(INITIAL_CANDIDATES) }
-    var hasMore by remember { mutableStateOf(false) }
+    var resolvingId by remember { mutableStateOf<String?>(null) }
     var bridgeFavourites by remember { mutableStateOf(settings.bridgeFavourites) }
     var showFavouritesOnly by rememberSaveable { mutableStateOf(false) }
+    // Ids removed because their stream died; kept so a stale persisted set cannot
+    // resurrect them before the removal is written back.
+    var removedFavouriteIds by remember { mutableStateOf(emptySet<String>()) }
+    // A dead row must not reappear when a later catalogue batch is merged in.
+    var deadEntryIds by remember { mutableStateOf(emptySet<String>()) }
+    val entriesLock = remember { Any() }
 
-    fun toggleFavourite(item: WorkingChannel) {
+    fun saveFavourites(next: Set<String>) {
+        if (next == bridgeFavourites) return
+        bridgeFavourites = next
+        settings.bridgeFavourites = next
+    }
+
+    // Only stream-checked Udaya ("udya")/Kannada rows are starred. Merge with saved
+    // favourites rather than replacing them, and never restore a confirmed-dead id.
+    val autoFavouriteIds = remember(entries, removedFavouriteIds) {
+        entries.filter {
+            it.state == ProbeState.WORKING && it.stream != null &&
+                it.isAutoFavourite() && it.meta.id !in removedFavouriteIds
+        }.map { it.meta.id }.toSet()
+    }
+    LaunchedEffect(autoFavouriteIds, removedFavouriteIds) {
+        saveFavourites((settings.bridgeFavourites - removedFavouriteIds) + autoFavouriteIds)
+    }
+
+    fun toggleFavourite(item: ChannelEntry) {
         val key = item.meta.id
         val next = if (key in bridgeFavourites) bridgeFavourites - key else bridgeFavourites + key
         bridgeFavourites = next
@@ -108,7 +140,15 @@ fun BridgeTvScreen(
 
     val tvCatalogs = manifest?.catalogs?.filter { it.type.equals("tv", ignoreCase = true) }.orEmpty()
     val catalogsKey = tvCatalogs.joinToString { "${it.type}/${it.id}" }
-    val cacheKey = BridgeTvCache.key(activeUrl, selectedCatalogId, query) + "|$requested"
+    val cacheKey = BridgeTvCache.key(activeUrl, selectedCatalogId, query)
+    val poolKey = "$activeUrl|$catalogsKey|$selectedCatalogId|${query.trim().lowercase()}|$refreshKey"
+
+    // Udaya/Kannada rows are found by the full catalogue loader below and jump the
+    // probe queue (see `sortedByDescending { it.isAutoFavourite() }`), so they are
+    // stream-checked and starred without a separate search sweep. A per-catalogue
+    // `?search=` sweep of all 139 catalogues is deliberately avoided: Bridge's
+    // single-threaded server degrades badly and starts returning empty catalogues
+    // after a few hundred search requests.
 
     LaunchedEffect(activeUrl) {
         val instance = StremioAddon.create(activeUrl)
@@ -130,135 +170,281 @@ fun BridgeTvScreen(
         connecting = false
     }
 
-    LaunchedEffect(addon, catalogsKey, selectedCatalogId, query, refreshKey, requested) {
-        val client = addon ?: run {
-            results = emptyList()
-            return@LaunchedEffect
-        }
-        val catalogs = tvCatalogs.filter { selectedCatalogId.isEmpty() || it.id == selectedCatalogId }
-        if (catalogs.isEmpty()) {
-            results = emptyList()
-            return@LaunchedEffect
-        }
-        hasMore = false
-        // "All TV" only needs a small slice per catalogue (round-robin spreads
-        // the probe budget across all of them); a single selected catalogue may
-        // need the whole thing. Fetching thousands of metas × 21 catalogs would
-        // be needlessly slow and memory-hungry.
-        val poolLimit = if (selectedCatalogId.isEmpty()) ALL_TV_POOL_LIMIT else CATALOG_POOL_LIMIT
-        // A previous search for this add-on/catalog/term is served instantly: no add-on
-        // request and no re-probing. This survives tab switches and app restarts.
-        BridgeTvCache.results(cacheKey)?.let { cached ->
-            results = cached
-            checking = false
-            checkError = null
-            return@LaunchedEffect
-        }
-        // Debounce typing so we don't hammer the add-on on every keystroke.
-        delay(400)
-        checking = true
-        checkError = null
-        val term = query.trim()
-
-        // Fetch EVERY tv catalogue IN PARALLEL, capping each one, then
-        // interleave round-robin. Concatenating sequentially made "All TV" as
-        // slow as the sum of all catalogue latencies, and a single large
-        // catalogue could fill the whole list before later ones were read.
-        val perCatalog = coroutineScope {
-            catalogs.map { catalog ->
-                async(Dispatchers.IO) {
-                    val metas = runCatching {
-                        client.catalog(catalog.type, catalog.id, term.ifEmpty { null })
-                    }.getOrDefault(emptyList())
-                    catalog.name to metas.take(poolLimit)
-                }
-            }.awaitAll()
-        }
-        if (perCatalog.all { it.second.isEmpty() }) {
-            checkError = "Couldn't load channels from any catalogue"
-            results = emptyList()
-            checking = false
-            return@LaunchedEffect
-        }
-
-        val interleaved = mutableListOf<Pair<StremioAddon.Meta, String>>()
-        val longest = perCatalog.maxOf { it.second.size }
-        for (index in 0 until longest) {
-            perCatalog.forEach { (name, metas) ->
-                if (index < metas.size) interleaved += metas[index] to name
+    // Bridge can be briefly unreachable or publish an empty manifest while its
+    // plugins load. Retry quietly until TV catalogues appear instead of stranding
+    // the screen with a timeout error. Handles both a failed connect (addon == null)
+    // and a healthy server that has not finished loading its plugins yet.
+    LaunchedEffect(addon, activeUrl, tvCatalogs.isEmpty(), addonError) {
+        if (addon != null && tvCatalogs.isNotEmpty()) return@LaunchedEffect
+        while (isActive) {
+            delay(MANIFEST_RETRY_MS)
+            val instance = StremioAddon.create(activeUrl) ?: continue
+            val loaded = runCatching { instance.manifest() }.getOrNull() ?: continue
+            val tvCount = loaded.catalogs.count { it.type.equals("tv", true) }
+            if (tvCount > 0) {
+                addon = instance
+                manifest = loaded
+                addonError = null
+                connecting = false
+                Log.i("BridgeTv", "Manifest recovered with $tvCount TV catalogues")
+                break
             }
         }
-
-        val unique = interleaved
-            .distinctBy { (meta, name) -> "$name|${meta.type}|${meta.id}" }
-        hasMore = unique.size > requested
-        val limited = unique.take(minOf(requested, MAX_CANDIDATES))
-        if (limited.isEmpty()) {
-            results = emptyList()
-            checking = false
-            return@LaunchedEffect
-        }
-
-        // Stream verified channels into the list as each probe completes, so
-        // the UI fills up progressively instead of sitting on a spinner until
-        // the last URL is checked. A hard budget guarantees the search settles
-        // even when a host hangs: whatever was verified by then is shown/cached.
-        results = emptyList()
-        val permits = Semaphore(PROBE_CONCURRENCY)
-        val verified = ProbeChannel<ProbeResult>(ProbeChannel.UNLIMITED)
-        val found = mutableListOf<WorkingChannel>()
-        val deadline = System.currentTimeMillis() + SEARCH_BUDGET_MS
-        var timedOut = false
-        coroutineScope {
-            val jobs = limited.map { (meta, catalogName) ->
-                launch(Dispatchers.IO) {
-                    permits.withPermit {
-                        val streams = runCatching { client.streams(meta.type, meta.id) }
-                            .getOrDefault(emptyList())
-                        val playable = streams.firstOrNull { stream ->
-                            val cached = BridgeTvCache.probe(stream.url)
-                            cached ?: StreamProbe.isPlayable(stream.url, stream.headers)
-                                .also { BridgeTvCache.putProbe(stream.url, it) }
-                        }
-                        verified.send(ProbeResult(playable?.let { WorkingChannel(meta, it, catalogName) }))
-                    }
-                }
-            }
-            var received = 0
-            while (received < limited.size) {
-                val remaining = deadline - System.currentTimeMillis()
-                if (remaining <= 0) {
-                    timedOut = true
-                    break
-                }
-                val item = withTimeoutOrNull(remaining) { verified.receive() }
-                if (item == null) {
-                    timedOut = true
-                    break
-                }
-                received++
-                item.channel?.let { channel ->
-                    found += channel
-                    results = found.toList()
-                }
-            }
-            jobs.forEach { it.cancel() }
-        }
-        // Only cache a complete sweep — a timed-out partial list should be
-        // retried on the next visit rather than frozen for the whole TTL.
-        if (!timedOut) BridgeTvCache.putResults(cacheKey, found)
-        results = found
-        checking = false
     }
 
-    val visibleResults = remember(results, bridgeFavourites, showFavouritesOnly) {
+    // Phase 1: cached working rows are shown immediately, then catalogue rows are
+    // appended in small batches. Bridge never has to answer 150+ full catalogue
+    // requests at once, and a stall in one batch cannot hide the rows already loaded.
+    LaunchedEffect(addon, catalogsKey, selectedCatalogId, query, refreshKey) {
+        val client = addon ?: run {
+            entries = emptyList()
+            cataloguesReady = false
+            fetching = false
+            loadingMore = false
+            return@LaunchedEffect
+        }
+        cataloguesReady = false
+        loadingMore = false
+        loadedCatalogCount = 0
+        totalCatalogCount = 0
+        checkError = null
+        fetching = true
+
+        val cachedChannels = BridgeTvCache.results(cacheKey).orEmpty()
+        val cachedEntries = cachedChannels.map {
+            ChannelEntry(it.meta, it.catalogName, ProbeState.WORKING, it.stream)
+        }
+        synchronized(entriesLock) { entries = cachedEntries }
+        checkedCount = entries.count { it.state == ProbeState.WORKING }
+
+        val catalogs = tvCatalogs.filter { selectedCatalogId.isEmpty() || it.id == selectedCatalogId }
+        totalCatalogCount = catalogs.size
+        if (catalogs.isEmpty()) {
+            fetching = false
+            cataloguesReady = true
+            checkError = if (cachedEntries.isEmpty()) {
+                null
+            } else {
+                "Showing cached channels — this add-on publishes no live TV catalogues."
+            }
+            return@LaunchedEffect
+        }
+
+        delay(300)
+        val term = query.trim()
+        val cachedById = cachedChannels.associateBy { "${it.catalogName}|${it.meta.type}|${it.meta.id}" }
+        val ordered = catalogs.withIndex()
+            .sortedWith(
+                compareByDescending<IndexedValue<StremioAddon.Catalog>> { (_, catalog) ->
+                    AUTO_FAVOURITE_TERMS.any { it in catalog.name.lowercase() }
+                }.thenBy { it.index },
+            )
+            .map { it.value }
+
+        var anySuccess = false
+        var initialRowsShown = synchronized(entriesLock) { entries.isNotEmpty() }
+        if (initialRowsShown) {
+            fetching = false
+            cataloguesReady = true
+        }
+        ordered.chunked(CATALOG_BATCH_SIZE).forEachIndexed { batchIndex, batch ->
+            if (!isActive) return@forEachIndexed
+            if (batchIndex > 0) delay(CATALOG_BATCH_PAUSE_MS)
+            val perCatalog = coroutineScope {
+                val fetchPermits = Semaphore(CATALOG_FETCH_CONCURRENCY)
+                batch.map { catalog ->
+                    async(Dispatchers.IO) {
+                        val metas = fetchPermits.withPermit {
+                            runCatching {
+                                client.catalog(catalog.type, catalog.id, term.ifEmpty { null })
+                            }.getOrDefault(emptyList())
+                        }
+                        catalog.name to metas
+                    }
+                }.awaitAll()
+            }
+            val unique = interleaveCatalogRows(perCatalog.filter { it.second.isNotEmpty() })
+                .distinctBy { (meta, name) -> "$name|${meta.type}|${meta.id}" }
+            if (unique.isNotEmpty()) anySuccess = true
+            val incoming = unique.mapNotNull { (meta, catalogName) ->
+                val id = "$catalogName|${meta.type}|${meta.id}"
+                if (id in deadEntryIds) return@mapNotNull null
+                val cached = cachedById[id]
+                ChannelEntry(
+                    meta = meta,
+                    catalogName = catalogName,
+                    state = if (cached != null) ProbeState.WORKING else ProbeState.PENDING,
+                    stream = cached?.stream,
+                )
+            }
+            val visibleNow = synchronized(entriesLock) {
+                entries = mergeEntries(entries, incoming)
+                checkedCount = entries.count { it.state == ProbeState.WORKING }
+                entries.size
+            }
+            loadedCatalogCount += batch.size
+            if (!initialRowsShown && visibleNow > 0) {
+                initialRowsShown = true
+                fetching = false
+                cataloguesReady = true
+            }
+            loadingMore = loadedCatalogCount < ordered.size
+            Log.i(
+                "BridgeTv",
+                "Batch ${batchIndex + 1}: ${incoming.size} rows (" +
+                    "${incoming.count { it.isAutoFavourite() }} Udaya/Kannada), " +
+                    "$visibleNow total, catalogue $loadedCatalogCount/${ordered.size}",
+            )
+        }
+        fetching = false
+        cataloguesReady = true
+        loadingMore = false
+        if (!anySuccess) {
+            checkError = if (cachedChannels.isNotEmpty()) {
+                "Showing cached channels — live catalogues are unreachable"
+            } else {
+                "Couldn't load channels from any catalogue"
+            }
+        }
+    }
+
+    // Phase 2: keep probing as batches arrive. Udaya/Kannada matches jump the queue
+    // so they are stream-checked and starred without waiting for every other channel.
+    LaunchedEffect(addon, poolKey, cataloguesReady) {
+        if (!cataloguesReady) return@LaunchedEffect
+        val client = addon ?: return@LaunchedEffect
+        while (isActive) {
+            val pending = synchronized(entriesLock) {
+                entries.filter { it.state == ProbeState.PENDING && it.id !in deadEntryIds }
+                    .sortedByDescending { it.isAutoFavourite() }
+                    .take(PROBE_BATCH_PER_SWEEP)
+            }
+            if (pending.isEmpty()) {
+                probing = false
+                delay(PROBE_IDLE_MS)
+                continue
+            }
+            probing = true
+            val working = BridgeTvCache.results(cacheKey).orEmpty().toMutableList()
+            val permits = Semaphore(PROBE_CONCURRENCY)
+            var persistedSince = 0
+            coroutineScope {
+                pending.map { entry ->
+                    launch(Dispatchers.IO) {
+                        permits.withPermit {
+                            if (!isActive) return@withPermit
+                            val streams = runCatching { client.streams(entry.meta.type, entry.meta.id) }
+                                .getOrDefault(emptyList())
+                            val playable = streams.firstOrNull { stream ->
+                                BridgeTvCache.probe(stream.url)
+                                    ?: StreamProbe.isPlayable(stream.url, stream.headers)
+                                        .also { BridgeTvCache.putProbe(stream.url, it) }
+                            }
+                            withContext(Dispatchers.Main.immediate) {
+                                synchronized(entriesLock) {
+                                    // Dead rows are removed and remembered so a later
+                                    // catalogue batch cannot resurrect them.
+                                    if (playable == null) deadEntryIds += entry.id
+                                    entries = if (playable == null) {
+                                        entries.filterNot { it.id == entry.id }
+                                    } else {
+                                        entries.map { current ->
+                                            if (current.id == entry.id) {
+                                                current.copy(state = ProbeState.WORKING, stream = playable)
+                                            } else current
+                                        }
+                                    }
+                                    checkedCount++
+                                }
+                                if (playable == null) {
+                                    removedFavouriteIds += entry.meta.id
+                                    saveFavourites(bridgeFavourites - entry.meta.id)
+                                }
+                            }
+                            if (playable != null) {
+                                synchronized(entriesLock) {
+                                    working += WorkingChannel(entry.meta, playable, entry.catalogName)
+                                    if (++persistedSince >= PROBE_PERSIST_EVERY) {
+                                        BridgeTvCache.putResults(cacheKey, working.distinctBy { it.id })
+                                        persistedSince = 0
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }.joinAll()
+            }
+            BridgeTvCache.putResults(cacheKey, working.distinctBy { it.id })
+            delay(PROBE_SWEEP_PAUSE_MS)
+        }
+    }
+
+    val visibleResults = remember(entries, bridgeFavourites, showFavouritesOnly) {
         val filtered = if (showFavouritesOnly) {
-            results.filter { it.meta.id in bridgeFavourites }
+            entries.filter { it.meta.id in bridgeFavourites }
         } else {
-            results
+            entries
         }
         // Keep stars at the top so favourites are always one tap away.
         filtered.sortedByDescending { it.meta.id in bridgeFavourites }
+    }
+
+    fun sendToPlayer(entry: ChannelEntry, stream: StremioAddon.Stream) {
+        val ua = stream.headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value
+        val ref = stream.headers.entries.firstOrNull {
+            it.key.equals("Referer", true) || it.key.equals("Referrer", true)
+        }?.value
+        onPlay(
+            Channel(
+                name = entry.meta.name,
+                url = stream.url,
+                logo = entry.meta.poster,
+                category = entry.catalogName,
+                tvgId = null,
+                userAgent = ua,
+                referrer = ref,
+            ),
+        )
+    }
+
+    fun play(entry: ChannelEntry) {
+        val ready = entry.stream
+        if (ready != null) {
+            sendToPlayer(entry, ready)
+            return
+        }
+        scope.launch {
+            val client = addon ?: return@launch
+            resolvingId = entry.id
+            val resolved = withContext(Dispatchers.IO) {
+                runCatching { client.streams(entry.meta.type, entry.meta.id) }
+                    .getOrDefault(emptyList())
+                    .let { streams ->
+                        streams.firstOrNull { s ->
+                            BridgeTvCache.probe(s.url) ?: StreamProbe.isPlayable(s.url, s.headers)
+                                .also { BridgeTvCache.putProbe(s.url, it) }
+                        } ?: streams.firstOrNull { it.url.startsWith("http", true) }
+                    }
+            }
+            resolvingId = null
+            if (resolved == null) {
+                synchronized(entriesLock) {
+                    deadEntryIds += entry.id
+                    entries = entries.filterNot { it.id == entry.id }
+                    removedFavouriteIds += entry.meta.id
+                }
+                saveFavourites(bridgeFavourites - entry.meta.id)
+                checkError = "Removed ${entry.meta.name} — no playable stream found"
+                return@launch
+            }
+            synchronized(entriesLock) {
+                entries = entries.map {
+                    if (it.id == entry.id) it.copy(state = ProbeState.WORKING, stream = resolved) else it
+                }
+            }
+            BridgeTvCache.putProbe(resolved.url, true)
+            sendToPlayer(entry, resolved)
+        }
     }
 
     Scaffold(
@@ -270,6 +456,8 @@ fun BridgeTvScreen(
                         onClick = {
                             BridgeTvCache.clearDeadProbes()
                             BridgeTvCache.clearResults(cacheKey)
+                            removedFavouriteIds = emptySet()
+                            deadEntryIds = emptySet()
                             refreshKey++
                         },
                     ) {
@@ -301,7 +489,6 @@ fun BridgeTvScreen(
                 onClick = {
                     settings.addonUrl = input
                     activeUrl = input
-                    requested = INITIAL_CANDIDATES
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -322,10 +509,7 @@ fun BridgeTvScreen(
 
             OutlinedTextField(
                 value = query,
-                onValueChange = {
-                    query = it
-                    requested = INITIAL_CANDIDATES
-                },
+                onValueChange = { query = it },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp),
@@ -360,7 +544,6 @@ fun BridgeTvScreen(
                             onClick = {
                                 showFavouritesOnly = false
                                 selectedCatalogId = ""
-                                requested = INITIAL_CANDIDATES
                             },
                             label = { Text("All TV") },
                         )
@@ -371,7 +554,6 @@ fun BridgeTvScreen(
                             onClick = {
                                 selectedCatalogId = catalog.id
                                 showFavouritesOnly = false
-                                requested = INITIAL_CANDIDATES
                             },
                             label = { Text(catalog.name) },
                         )
@@ -379,7 +561,7 @@ fun BridgeTvScreen(
                 }
             }
 
-            if (checking) {
+            if (connecting || fetching || loadingMore || probing) {
                 Row(
                     Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -387,7 +569,12 @@ fun BridgeTvScreen(
                     CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(10.dp))
                     Text(
-                        "Checking streams…",
+                        when {
+                            connecting -> "Connecting…"
+                            fetching -> "Loading catalogues $loadedCatalogCount/$totalCatalogCount…"
+                            loadingMore -> "Loading more catalogues $loadedCatalogCount/$totalCatalogCount…"
+                            else -> "Checking streams $checkedCount/${entries.size}…"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -405,30 +592,11 @@ fun BridgeTvScreen(
                 Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 24.dp),
             ) {
-                items(visibleResults, key = { it.meta.id + "|" + it.stream.url }) { item ->
+                items(visibleResults, key = { it.id }) { item ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
-                                val headers = item.stream.headers
-                                val ua = headers.entries
-                                    .firstOrNull { it.key.equals("User-Agent", true) }?.value
-                                val ref = headers.entries
-                                    .firstOrNull {
-                                        it.key.equals("Referer", true) || it.key.equals("Referrer", true)
-                                    }?.value
-                                onPlay(
-                                    Channel(
-                                        name = item.meta.name,
-                                        url = item.stream.url,
-                                        logo = item.meta.poster,
-                                        category = item.catalogName,
-                                        tvgId = null,
-                                        userAgent = ua,
-                                        referrer = ref,
-                                    ),
-                                )
-                            }
+                            .clickable { play(item) }
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -457,6 +625,18 @@ fun BridgeTvScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            when {
+                                resolvingId == item.id -> Text(
+                                    "Resolving stream…",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                item.state == ProbeState.PENDING -> Text(
+                                    "Checking stream…",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                         IconButton(onClick = { toggleFavourite(item) }) {
                             val isFavourite = item.meta.id in bridgeFavourites
@@ -473,22 +653,22 @@ fun BridgeTvScreen(
                     }
                 }
 
-                if (hasMore && !checking && requested < MAX_CANDIDATES) {
+                if (entries.isNotEmpty() && !fetching) {
                     item {
-                        Button(
-                            onClick = {
-                                requested = minOf(requested + LOAD_MORE_STEP, MAX_CANDIDATES)
+                        Text(
+                            text = buildString {
+                                append("${entries.size} channels · ${entries.count { it.state == ProbeState.WORKING }} ready")
+                                if (probing) append(" · checking the rest in the background")
+                                else if (checkedCount < entries.size) append(" · tap any channel to play it")
                             },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                        ) {
-                            Text("Load more channels")
-                        }
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        )
                     }
                 }
 
-                if (!checking && manifest != null && visibleResults.isEmpty()) {
+                if (cataloguesReady && !loadingMore && manifest != null && visibleResults.isEmpty()) {
                     item {
                         Box(
                             Modifier
@@ -504,7 +684,7 @@ fun BridgeTvScreen(
                                 } else if (tvCatalogs.isEmpty()) {
                                     "This add-on publishes no live TV catalogues."
                                 } else {
-                                    "No working channels found. The add-on's links may be expired or offline — try another add-on or search again later."
+                                    "No channels found in this catalogue. Try All TV or refresh."
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -527,13 +707,72 @@ fun BridgeTvScreen(
     }
 }
 
-/** Non-null envelope so a null probe result isn't confused with a timeout. */
-private data class ProbeResult(val channel: WorkingChannel?)
+/** One catalogue row; a stream is attached once checked or resolved on tap. */
+private data class ChannelEntry(
+    val meta: StremioAddon.Meta,
+    val catalogName: String,
+    val state: ProbeState,
+    val stream: StremioAddon.Stream? = null,
+) {
+    val id: String get() = "$catalogName|${meta.type}|${meta.id}"
+}
 
-private const val CATALOG_POOL_LIMIT = 2000
-private const val ALL_TV_POOL_LIMIT = 100
-private const val INITIAL_CANDIDATES = 120
-private const val LOAD_MORE_STEP = 120
-private const val MAX_CANDIDATES = 600
-private const val PROBE_CONCURRENCY = 14
-private const val SEARCH_BUDGET_MS = 90_000L
+private enum class ProbeState { PENDING, WORKING }
+
+// Channel/catalogue names that are always auto-favourited ("udya" is a common
+// spelling of Udaya in Bridge listings).
+private val AUTO_FAVOURITE_TERMS = listOf("udya", "udaya", "kannada")
+
+private fun ChannelEntry.isAutoFavourite(): Boolean {
+    val text = "${meta.name} $catalogName".lowercase()
+    return AUTO_FAVOURITE_TERMS.any { it in text }
+}
+
+/** Round-robin within a batch so one huge catalogue can't bury the others. */
+private fun interleaveCatalogRows(
+    perCatalog: List<Pair<String, List<StremioAddon.Meta>>>,
+): List<Pair<StremioAddon.Meta, String>> {
+    val rows = mutableListOf<Pair<StremioAddon.Meta, String>>()
+    val longest = perCatalog.maxOfOrNull { it.second.size } ?: 0
+    for (index in 0 until longest) {
+        perCatalog.forEach { (name, metas) ->
+            if (index < metas.size) rows += metas[index] to name
+        }
+    }
+    return rows
+}
+
+/** Keep already-verified rows when a later batch repeats the same channel. */
+private fun mergeEntries(
+    current: List<ChannelEntry>,
+    incoming: List<ChannelEntry>,
+): List<ChannelEntry> {
+    val merged = linkedMapOf<String, ChannelEntry>()
+    current.forEach { merged[it.id] = it }
+    incoming.forEach { row ->
+        val existing = merged[row.id]
+        merged[row.id] = when {
+            existing == null -> row
+            existing.state == ProbeState.WORKING && existing.stream != null -> existing
+            row.state == ProbeState.WORKING && row.stream != null -> row
+            else -> existing
+        }
+    }
+    return merged.values.toList()
+}
+
+private val WorkingChannel.id: String get() = "$catalogName|${meta.type}|${meta.id}"
+
+// Every channel is listed; only the concurrent work is bounded. Bridge can publish
+// 150+ catalogues, so load them in small batches with a short pause instead of one
+// all-at-once burst that stalls the server. Verified streams are cached so the
+// checked set grows across sessions.
+private const val PROBE_BATCH_PER_SWEEP = 200
+private const val PROBE_PERSIST_EVERY = 25
+private const val PROBE_CONCURRENCY = 8
+private const val PROBE_IDLE_MS = 600L
+private const val PROBE_SWEEP_PAUSE_MS = 200L
+private const val CATALOG_BATCH_SIZE = 2
+private const val CATALOG_BATCH_PAUSE_MS = 400L
+private const val CATALOG_FETCH_CONCURRENCY = 2
+private const val MANIFEST_RETRY_MS = 5_000L
