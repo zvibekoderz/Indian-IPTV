@@ -34,6 +34,8 @@ import com.indian.iptv.data.ContentType
 import com.indian.iptv.data.catchup.Catchup
 import com.indian.iptv.data.settings.SourceConfig
 import com.indian.iptv.player.PlayerActivity
+import com.indian.iptv.ui.addons.AddonsScreen
+import com.indian.iptv.ui.bridgetv.BridgeTvScreen
 import com.indian.iptv.ui.categories.CategoriesScreen
 import com.indian.iptv.ui.guide.GuideScreen
 import com.indian.iptv.ui.channels.ChannelsScreen
@@ -61,6 +63,7 @@ class MainActivity : ComponentActivity() {
                         onPlay = { channel, list, resumeMs -> openPlayer(channel, list, resumeMs) },
                         onPlayEpisode = { ep, season, series, resumeMs -> openPlayerForEpisode(ep, season, series, resumeMs) },
                         onPlayDirect = ::onPlayDirect,
+                        onPlayAddon = ::openAddonStream,
                     )
                     ReminderHost(onWatch = ::openLiveChannel)
                 }
@@ -105,6 +108,26 @@ class MainActivity : ComponentActivity() {
             if (resumeMs > 0L) putExtra(PlayerActivity.EXTRA_RESUME_POSITION_MS, resumeMs)
         }
         startActivity(intent)
+    }
+
+    /** Play a direct stream URL resolved from a Stremio-compatible add-on. */
+    private fun openAddonStream(url: String, title: String, headers: Map<String, String>) {
+        val id = "addon:${url.hashCode()}"
+        val userAgent = headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value
+        val referrer = headers.entries.firstOrNull {
+            it.key.equals("Referer", true) || it.key.equals("Referrer", true)
+        }?.value
+        startActivity(
+            Intent(this, PlayerActivity::class.java).apply {
+                putExtra(PlayerActivity.EXTRA_CHANNEL_ID, id)
+                putExtra(PlayerActivity.EXTRA_ADHOC_IDS, arrayOf(id))
+                putExtra(PlayerActivity.EXTRA_ADHOC_URLS, arrayOf(url))
+                putExtra(PlayerActivity.EXTRA_ADHOC_NAMES, arrayOf(title))
+                putExtra(PlayerActivity.EXTRA_ADHOC_TYPE, ContentType.MOVIE.name)
+                putExtra(PlayerActivity.EXTRA_ADHOC_USER_AGENTS, arrayOf(userAgent))
+                putExtra(PlayerActivity.EXTRA_ADHOC_REFERRERS, arrayOf(referrer))
+            },
+        )
     }
 
     private fun openLiveChannel(channelId: String) {
@@ -184,6 +207,8 @@ private sealed interface Route {
     data class SeriesDetail(val seriesId: String, val preview: Channel? = null) : Route
     data class Categories(val type: ContentType, val category: String?) : Route
     data object Guide : Route
+    data object Addons : Route
+    data object BridgeTv : Route
     data class PinGate(val target: Route) : Route
 }
 
@@ -195,6 +220,7 @@ private fun AppRoot(
     onPlay: (Channel, List<Channel>, Long) -> Unit,
     onPlayEpisode: (Episode, SeriesSeason, SeriesRef, Long) -> Unit,
     onPlayDirect: (Channel) -> Unit,
+    onPlayAddon: (String, String, Map<String, String>) -> Unit,
 ) {
     val app = IptvApp.get()
     // Sentinel wrapper for "first emit hasn't arrived yet" vs "emit arrived but null".
@@ -285,6 +311,7 @@ private fun AppRoot(
                 onPlay = onPlay,
                 onPlayEpisode = onPlayEpisode,
                 onPlayDirect = onPlayDirect,
+                onPlayAddon = onPlayAddon,
             )
         }
     }
@@ -304,6 +331,7 @@ private fun AppRouteHost(
     onPlay: (Channel, List<Channel>, Long) -> Unit,
     onPlayEpisode: (Episode, SeriesSeason, SeriesRef, Long) -> Unit,
     onPlayDirect: (Channel) -> Unit,
+    onPlayAddon: (String, String, Map<String, String>) -> Unit,
 ) {
     // Keyed on the route so two consecutive screens of the same kind (film → related film)
     // don't share remembered state such as the initial focus request.
@@ -327,6 +355,8 @@ private fun AppRouteHost(
                 onOpenSettings = { onNavigate(Route.Settings) },
                 onOpenCategories = { type, category -> onNavigate(Route.Categories(type, category)) },
                 onOpenGuide = { onNavigate(Route.Guide) },
+                onOpenAddons = { onNavigate(Route.Addons) },
+                onOpenBridgeTv = { onNavigate(Route.BridgeTv) },
                 onOpenProfiles = { onNavigate(Route.Profiles) },
                 onPlay = { channel, list ->
                     when (channel.type) {
@@ -372,6 +402,14 @@ private fun AppRouteHost(
                 onBack = onBack,
                 onPlay = { channel, list -> onPlay(channel, list, 0L) },
                 onPlayItem = onPlayDirect,
+            )
+            Route.Addons -> AddonsScreen(
+                onBack = onBack,
+                onPlay = onPlayAddon,
+            )
+            Route.BridgeTv -> BridgeTvScreen(
+                onBack = onBack,
+                onPlay = onPlayAddon,
             )
             is Route.Categories -> CategoriesScreen(
                 type = route.type,
