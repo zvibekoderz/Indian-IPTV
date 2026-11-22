@@ -153,6 +153,27 @@ class SettingsStore(private val context: Context) {
     }
 
     /**
+     * Auto-favourites the user explicitly unstarred. Without this, the next
+     * Kannaḍa/Udaya row update would immediately re-add the same id.
+     */
+    val bridgeFavouriteDismissals: Flow<Set<String>> = context.dataStore.data.map { prefs ->
+        prefs[BRIDGE_FAVOURITE_DISMISSALS]
+            ?.split('\n')
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?.toSet()
+            ?: emptySet()
+    }
+
+    suspend fun setBridgeFavouriteDismissals(ids: Set<String>) {
+        context.dataStore.edit { prefs ->
+            val clean = ids.map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+            if (clean.isEmpty()) prefs.remove(BRIDGE_FAVOURITE_DISMISSALS)
+            else prefs[BRIDGE_FAVOURITE_DISMISSALS] = clean.joinToString("\n")
+        }
+    }
+
+    /**
      * Whether CNCVerse Bridge should be opened automatically after the TV boots.
      * Bridge itself has no boot receiver and its licence forbids modifying it, so
      * our app performs the best-effort auto-launch instead.
@@ -331,6 +352,7 @@ class SettingsStore(private val context: Context) {
         val PLAYLIST_LAST_MODIFIED = stringPreferencesKey("playlist_last_modified")
         val ADDON_URL = stringPreferencesKey("stremio_addon_url")
         val BRIDGE_FAVOURITES = stringPreferencesKey("bridge_tv_favourites")
+        val BRIDGE_FAVOURITE_DISMISSALS = stringPreferencesKey("bridge_tv_favourite_dismissals")
         val BRIDGE_AUTO_LAUNCH = booleanPreferencesKey("bridge_auto_launch")
         val LAST_REFRESH_AT = longPreferencesKey("last_refresh_at")
         val LAST_EPG_REFRESH_AT = longPreferencesKey("last_epg_refresh_at")

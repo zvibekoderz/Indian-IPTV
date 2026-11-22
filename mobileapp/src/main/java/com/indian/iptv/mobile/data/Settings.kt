@@ -54,6 +54,16 @@ class Settings(context: Context) {
             prefs.edit().putStringSet(KEY_BRIDGE_FAVOURITES, value).apply()
         }
 
+    /**
+     * Auto-favourites the user unstarred. Re-adding them on every stream update
+     * would make the star impossible to turn off.
+     */
+    var bridgeFavouriteDismissals: Set<String>
+        get() = prefs.getStringSet(KEY_BRIDGE_FAVOURITE_DISMISSALS, emptySet()).orEmpty()
+        set(value) {
+            prefs.edit().putStringSet(KEY_BRIDGE_FAVOURITE_DISMISSALS, value).apply()
+        }
+
     /** Preferred player scale mode: 0 = Fit, 1 = Fill, 2 = Zoom. */
     var scaleMode: Int
         get() = prefs.getInt(KEY_SCALE_MODE, 0).coerceIn(0, 2)
@@ -94,6 +104,7 @@ class Settings(context: Context) {
         private const val KEY_URLS = "m3u_urls"
         private const val KEY_FAVOURITES = "favourite_urls"
         private const val KEY_BRIDGE_FAVOURITES = "bridge_favourites"
+        private const val KEY_BRIDGE_FAVOURITE_DISMISSALS = "bridge_favourite_dismissals"
         private const val KEY_SCALE_MODE = "scale_mode"
         private const val KEY_SCALE_RESET = "scale_mode_reset_v2"
         private const val KEY_EPG_URL = "epg_url"

@@ -96,6 +96,7 @@ fun BridgeTvScreen(
     val scope = rememberCoroutineScope()
     val savedUrl by app.settings.addonUrl.collectAsState(initial = "")
     val savedFavourites by app.settings.bridgeFavourites.collectAsState(initial = emptySet())
+    val savedDismissals by app.settings.bridgeFavouriteDismissals.collectAsState(initial = emptySet())
 
     var input by remember { mutableStateOf(savedUrl) }
     var activeUrl by remember { mutableStateOf(savedUrl) }
@@ -120,6 +121,9 @@ fun BridgeTvScreen(
     var refreshKey by remember { mutableIntStateOf(0) }
     var resolvingId by remember { mutableStateOf<String?>(null) }
     var bridgeFavourites by remember { mutableStateOf(savedFavourites) }
+    // Stable, persisted record of auto-favourites the user deliberately unstarred.
+    var dismissedAutoFavouriteIds by remember { mutableStateOf(emptySet<String>()) }
+    var dismissalsLoaded by remember { mutableStateOf(false) }
     var showFavouritesOnly by rememberSaveable { mutableStateOf(false) }
     // Ids removed because their stream died; kept so a late DataStore emission
     // cannot resurrect them before the persisted set catches up.
@@ -135,16 +139,36 @@ fun BridgeTvScreen(
         scope.launch { app.settings.setBridgeFavourites(next) }
     }
 
+    // DataStore emits the saved set asynchronously. Adopt it once, then treat the
+    // local set as authoritative so a late emission cannot restore a star we just
+    // removed.
+    LaunchedEffect(savedDismissals) {
+        if (!dismissalsLoaded) {
+            dismissedAutoFavouriteIds = savedDismissals
+            dismissalsLoaded = true
+        }
+    }
+
+    fun saveDismissals(next: Set<String>) {
+        if (next == dismissedAutoFavouriteIds) return
+        dismissedAutoFavouriteIds = next
+        scope.launch { app.settings.setBridgeFavouriteDismissals(next) }
+    }
+
     // Only stream-checked Udaya/udya/Kannada rows become favourites. DataStore can
     // emit late, so merge on every change and never restore a confirmed-dead id.
-    val autoFavouriteIds = remember(entries, removedFavouriteIds) {
+    val autoFavouriteIds = remember(entries, removedFavouriteIds, dismissedAutoFavouriteIds) {
         entries.filter {
             it.state == ProbeState.WORKING && it.stream != null &&
-                it.isAutoFavourite() && it.meta.id !in removedFavouriteIds
+                it.isAutoFavourite() &&
+                it.meta.id !in removedFavouriteIds &&
+                it.meta.id !in dismissedAutoFavouriteIds
         }.map { it.meta.id }.toSet()
     }
-    LaunchedEffect(savedFavourites, autoFavouriteIds) {
-        saveFavourites((savedFavourites - removedFavouriteIds) + autoFavouriteIds)
+    LaunchedEffect(savedFavourites, autoFavouriteIds, removedFavouriteIds, dismissedAutoFavouriteIds) {
+        saveFavourites(
+            (savedFavourites - removedFavouriteIds - dismissedAutoFavouriteIds) + autoFavouriteIds
+        )
     }
 
     // DataStore may emit after the first composition; don't freeze the initial
@@ -158,9 +182,14 @@ fun BridgeTvScreen(
 
     fun toggleFavourite(item: ChannelEntry) {
         val key = item.meta.id
-        val next = if (key in bridgeFavourites) bridgeFavourites - key else bridgeFavourites + key
+        val removing = key in bridgeFavourites
+        val next = if (removing) bridgeFavourites - key else bridgeFavourites + key
         bridgeFavourites = next
         scope.launch { app.settings.setBridgeFavourites(next) }
+        // Remember a deliberate unstar so the auto-favourite effect cannot restore it.
+        saveDismissals(
+            if (removing) dismissedAutoFavouriteIds + key else dismissedAutoFavouriteIds - key
+        )
     }
 
     val tvCatalogs = manifest?.catalogs?.filter { it.type.equals("tv", ignoreCase = true) }.orEmpty()
@@ -254,11 +283,15 @@ fun BridgeTvScreen(
         checkError = null
         fetching = true
 
-        val cachedChannels = BridgeTvCache.results(cacheKey).orEmpty()
+        val cachedChannels = withContext(Dispatchers.IO) {
+            BridgeTvCache.results(cacheKey).orEmpty()
+        }
         val cachedEntries = cachedChannels.map {
             ChannelEntry(it.meta, it.catalogName, ProbeState.WORKING, it.stream)
         }
-        synchronized(entriesLock) { entries = cachedEntries }
+        synchronized(entriesLock) {
+            entries = sortForDisplay(cachedEntries, bridgeFavourites)
+        }
         checkedCount = entries.count { it.state == ProbeState.WORKING }
 
         val catalogs = tvCatalogs.filter { selectedCatalogId.isEmpty() || it.id == selectedCatalogId }
@@ -333,7 +366,7 @@ fun BridgeTvScreen(
                 )
             }
             val visibleNow = synchronized(entriesLock) {
-                entries = mergeEntries(entries, incoming)
+                entries = sortForDisplay(mergeEntries(entries, incoming), bridgeFavourites)
                 checkedCount = entries.count { it.state == ProbeState.WORKING }
                 entries.size
             }
@@ -389,7 +422,11 @@ fun BridgeTvScreen(
                 continue
             }
             probing = true
-            val working = BridgeTvCache.results(cacheKey).orEmpty().toMutableList()
+            // Cache JSON can hold tens of thousands of rows; parse it off the main
+            // thread so stream checking never stutters channel navigation.
+            val working = withContext(Dispatchers.IO) {
+                BridgeTvCache.results(cacheKey).orEmpty()
+            }.toMutableList()
             val permits = Semaphore(PROBE_CONCURRENCY)
             var persistedSince = 0
             coroutineScope {
@@ -445,18 +482,29 @@ fun BridgeTvScreen(
                     }
                 }.joinAll()
             }
-            BridgeTvCache.putResults(cacheKey, working.distinctBy { it.id })
+            val snapshot = synchronized(entriesLock) { working.distinctBy { it.id } }
+            withContext(Dispatchers.IO) { BridgeTvCache.putResults(cacheKey, snapshot) }
             delay(PROBE_SWEEP_PAUSE_MS)
         }
     }
 
+    // Re-sort only when the favourite set changes. Stream probes update `entries`
+    // hundreds of times, and sorting 20k rows on every update made scrolling lag.
+    LaunchedEffect(bridgeFavourites) {
+        // Debounce bursts of auto-favourites so a thousand stream results don't
+        // trigger a thousand full-list sorts.
+        delay(250)
+        synchronized(entriesLock) {
+            entries = sortForDisplay(entries, bridgeFavourites)
+        }
+    }
+
     val visibleResults = remember(entries, bridgeFavourites, showFavouritesOnly) {
-        val filtered = if (showFavouritesOnly) {
+        if (showFavouritesOnly) {
             entries.filter { it.meta.id in bridgeFavourites }
         } else {
             entries
         }
-        filtered.sortedByDescending { it.meta.id in bridgeFavourites }
     }
 
     /** Hand a resolved stream to the player, keeping the add-on's playback headers. */
@@ -543,8 +591,10 @@ fun BridgeTvScreen(
                 )
                 Spacer(Modifier.weight(1f))
                 TvPillButton(label = "Refresh") {
-                    BridgeTvCache.clearDeadProbes()
-                    BridgeTvCache.clearResults(cacheKey)
+                    scope.launch(Dispatchers.IO) {
+                        BridgeTvCache.clearDeadProbes()
+                        BridgeTvCache.clearResults(cacheKey)
+                    }
                     removedFavouriteIds = emptySet()
                     deadEntryIds = emptySet()
                     refreshKey++
@@ -646,7 +696,10 @@ fun BridgeTvScreen(
             }
 
             val firstItemFocus = remember { FocusRequester() }
-            LaunchedEffect(visibleResults.size) {
+            // Request focus only when the list first appears or after Refresh.
+            // Keying on `size` stole focus on every new stream result and made
+            // D-pad navigation feel like it was lagging.
+            LaunchedEffect(refreshKey, visibleResults.isNotEmpty()) {
                 if (visibleResults.isNotEmpty()) runCatching { firstItemFocus.requestFocus() }
             }
 
@@ -890,6 +943,31 @@ private fun ChannelEntry.isAutoFavourite(): Boolean {
     val text = "${meta.name} $catalogName".lowercase()
     return AUTO_FAVOURITE_TERMS.any { it in text }
 }
+
+private val PRIORITY_FAVOURITE_VIP_TERMS = listOf("jio vip", "jiotv vip", "vip (jiotv")
+private val PRIORITY_FAVOURITE_UDAYA_TERMS = listOf("udya", "udaya")
+
+/** JIO VIP first, then Udaya, then the rest of the Kannada block. */
+private fun ChannelEntry.favouriteRank(): Int {
+    val text = "${meta.name} $catalogName".lowercase()
+    return when {
+        PRIORITY_FAVOURITE_VIP_TERMS.any { it in text } -> 0
+        PRIORITY_FAVOURITE_UDAYA_TERMS.any { it in text } -> 1
+        "kannada" in text -> 2
+        else -> 3
+    }
+}
+
+/**
+ * Stars always lead, with JIOTV VIP/Udaya at the very top of the starred group.
+ * Non-favourites keep their discovery order so a stream result cannot reshuffle
+ * the whole list.
+ */
+private fun sortForDisplay(items: List<ChannelEntry>, favourites: Set<String>): List<ChannelEntry> =
+    items.sortedWith(
+        compareByDescending<ChannelEntry> { it.meta.id in favourites }
+            .thenBy { if (it.meta.id in favourites) it.favouriteRank() else Int.MAX_VALUE }
+    )
 
 /** Round-robin within a batch so one huge catalogue can't bury the others. */
 private fun interleaveCatalogRows(
