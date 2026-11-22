@@ -380,9 +380,13 @@ fun BridgeTvScreen(
                     launch(Dispatchers.IO) {
                         permits.withPermit {
                             if (!isActive) return@withPermit
-                            val streams = runCatching { client.streams(entry.meta.type, entry.meta.id) }
-                                .getOrDefault(emptyList())
-                            val playable = streams.firstOrNull { stream ->
+                            // A failed request only means Bridge is busy/unreachable —
+                            // never treat that as a dead channel. Leave it PENDING so a
+                            // later sweep retries it; only a successful response with
+                            // no playable direct stream proves a channel is dead.
+                            val streamsResult = runCatching { client.streams(entry.meta.type, entry.meta.id) }
+                            if (streamsResult.isFailure) return@withPermit
+                            val playable = streamsResult.getOrThrow().firstOrNull { stream ->
                                 BridgeTvCache.probe(stream.url)
                                     ?: StreamProbe.isPlayable(stream.url, stream.headers)
                                         .also { BridgeTvCache.putProbe(stream.url, it) }
@@ -391,7 +395,10 @@ fun BridgeTvScreen(
                                 synchronized(entriesLock) {
                                     // Dead rows are removed and remembered so a later
                                     // catalogue batch cannot resurrect them.
-                                    if (playable == null) deadEntryIds += entry.id
+                                    if (playable == null) {
+                                        deadEntryIds += entry.id
+                                        working.removeAll { it.id == entry.id }
+                                    }
                                     entries = if (playable == null) {
                                         entries.filterNot { it.id == entry.id }
                                     } else {
