@@ -45,6 +45,10 @@ class AddonBootResolver(
 
     suspend fun resolveAllIfEnabled() {
         if (!settings.addonBootResolution.first() || !settings.addonsEnabled.first()) return
+        val last = settings.lastAddonResolutionAt.first()
+        // Boot resolution is expensive on a 25k-channel catalogue. Running it on every
+        // process start made the home screen feel slow; once per session window is enough.
+        if (last > 0L && System.currentTimeMillis() - last < RESOLVE_INTERVAL_MS) return
         resolveAll()
     }
 
@@ -131,7 +135,8 @@ class AddonBootResolver(
 
     companion object {
         private const val TAG = "AddonBootResolver"
-        private const val MAX_PER_PASS = 400
+        private const val MAX_PER_PASS = 80
+        private const val RESOLVE_INTERVAL_MS = 6L * 3_600_000L
         private val PRIORITY_TERMS = listOf("udya", "udaya", "kannada", "jio")
     }
 }

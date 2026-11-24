@@ -152,8 +152,8 @@ class AddonStreamResolver(private val dao: ChannelDao) {
 
     companion object {
         private const val TAG = "AddonResolver"
-        private const val MAX_CANDIDATES = 6
-        private const val MAX_PARALLEL_PROBES = 6
+        private const val MAX_CANDIDATES = 4
+        private const val MAX_PARALLEL_PROBES = 4
 
         fun qualityOf(label: String, url: String): Pair<Int, String> {
             val text = "$label $url".lowercase()

@@ -565,6 +565,7 @@ private fun RailsView(
             searchVisible && state.isSearching -> SearchResultsView(
                 query = state.searchQuery,
                 results = state.searchResults,
+                onToggleFavorite = onToggleFavorite,
                 onPlay = { ch, list ->
                     onRememberSearch()
                     onPlay(ch, list)
@@ -855,6 +856,7 @@ private fun RecentChip(label: String, subtle: Boolean = false, onClick: () -> Un
 private fun SearchResultsView(
     query: String,
     results: List<Channel>,
+    onToggleFavorite: (String) -> Unit = {},
     onPlay: (Channel, List<Channel>) -> Unit,
 ) {
     if (results.isEmpty()) {
@@ -909,9 +911,10 @@ private fun SearchResultsView(
                             ContentType.TV -> LogoCard(
                                 channel = channel,
                                 progressFraction = null,
-                                onClick = {
-                                    if (channel.streamUrl != null) onPlay(channel, playable)
-                                },
+                                // Add-on rows are imported as metadata without a stream. OK must
+                                // still route to the router, which resolves the best stream on demand.
+                                onClick = { onPlay(channel, playable) },
+                                onLongClick = { onToggleFavorite(channel.id) },
                             )
                             ContentType.MOVIE, ContentType.SERIES -> PosterCard(
                                 channel = channel,
@@ -919,6 +922,7 @@ private fun SearchResultsView(
                                 // Series cards have a null streamUrl but must still propagate —
                                 // the outer router takes them to the detail screen.
                                 onClick = { onPlay(channel, playable) },
+                                onLongClick = { onToggleFavorite(channel.id) },
                             )
                         }
                     }

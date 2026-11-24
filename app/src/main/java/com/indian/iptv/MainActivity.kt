@@ -163,17 +163,21 @@ class MainActivity : ComponentActivity() {
             val best = app.addonStreamResolver.resolve(
                 addon, ref.sourceIndex, ref.type, meta, force = false,
             ).firstOrNull()
-            withContext(kotlinx.coroutines.Dispatchers.Main) {
-                if (best == null) {
+            if (best == null) {
+                withContext(kotlinx.coroutines.Dispatchers.Main) {
                     android.widget.Toast.makeText(
                         this@MainActivity, "No working direct stream found for ${channel.name}",
                         android.widget.Toast.LENGTH_SHORT,
                     ).show()
-                    return@withContext
                 }
-                app.database.channelDao().updateStream(channel.id, best.url, best.userAgent, best.referrer)
-                openAddonStream(best.url, channel.name, best.headers, channel.id)
+                return@launch
             }
+            // Room writes must be off the main thread — doing this inside the Main
+            // context aborted the coroutine before the player could be opened.
+            withContext(kotlinx.coroutines.Dispatchers.IO) {
+                app.database.channelDao().updateStream(channel.id, best.url, best.userAgent, best.referrer)
+            }
+            openAddonStream(best.url, channel.name, best.headers, channel.id)
         }
     }
 
