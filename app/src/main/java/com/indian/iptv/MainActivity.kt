@@ -160,13 +160,12 @@ class MainActivity : ComponentActivity() {
                 description = null,
                 releaseInfo = null,
             )
-            var best = app.addonStreamResolver.resolve(
-                addon, ref.sourceIndex, ref.type, meta, force = false,
-            ).firstOrNull()
+            val cacheKey = com.indian.iptv.data.addon.AddonStreamCache.keyForChannelId(channel.id)
+            var best = cacheKey?.let { com.indian.iptv.data.addon.AddonStreamCache.best(it) }
             if (best == null) {
-                // Some TV networks reject the tiny Range-based probe even though ExoPlayer
-                // can play the stream normally. Fall back to the highest-labelled direct
-                // URL rather than leaving a search result unplayable. Dead links stay out.
+                // Fast path: pick the highest-labelled direct URL immediately. A full
+                // probe can take many seconds on a TV network; play first, then verify
+                // and upgrade in the background. Dead links stay excluded.
                 val dead = app.addonStreamResolver.deadUrls()
                 val direct = runCatching { addon.streams(meta.type, meta.id) }
                     .getOrDefault(emptyList())
@@ -187,8 +186,9 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
-            android.util.Log.i(TAG, "addon play ${channel.name}: best=${best?.url?.take(120)}")
-            if (best == null) {
+            val chosen = best
+            android.util.Log.i(TAG, "addon play ${channel.name}: best=${chosen?.url?.take(120)}")
+            if (chosen == null) {
                 withContext(kotlinx.coroutines.Dispatchers.Main) {
                     android.widget.Toast.makeText(
                         this@MainActivity, "No working direct stream found for ${channel.name}",
@@ -200,9 +200,26 @@ class MainActivity : ComponentActivity() {
             // Room writes must be off the main thread — doing this inside the Main
             // context aborted the coroutine before the player could be opened.
             withContext(kotlinx.coroutines.Dispatchers.IO) {
-                app.database.channelDao().updateStream(channel.id, best.url, best.userAgent, best.referrer)
+                app.database.channelDao().updateStream(channel.id, chosen.url, chosen.userAgent, chosen.referrer)
             }
-            openAddonStream(best.url, channel.name, best.headers, channel.id)
+            openAddonStream(chosen.url, channel.name, chosen.headers, channel.id)
+
+            // Verify and upgrade in the background. The user is already watching the
+            // instant choice, so a slow probe never holds them on a black screen.
+            if (cacheKey != null) {
+                app.appScope.launch {
+                    val verified = app.addonStreamResolver
+                        .resolve(addon, ref.sourceIndex, ref.type, meta, force = true)
+                        .firstOrNull()
+                    if (verified != null && verified.url != chosen.url) {
+                        withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            app.database.channelDao().updateStream(
+                                channel.id, verified.url, verified.userAgent, verified.referrer,
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 
