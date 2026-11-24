@@ -2,7 +2,6 @@ package com.indian.iptv.ui.addons
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,7 +24,6 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -52,9 +50,10 @@ import androidx.tv.foundation.lazy.list.TvLazyRow
 import androidx.tv.foundation.lazy.list.itemsIndexed as rowItemsIndexed
 import androidx.tv.material3.Button
 import androidx.tv.material3.ClickableSurfaceDefaults
-import androidx.compose.material3.Icon
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.indian.iptv.ui.theme.tvFocus
 import com.indian.iptv.IptvApp
@@ -227,9 +226,11 @@ fun AddonsScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Filled.ArrowBack,
-                        contentDescription = stringResource(R.string.channels_settings_hint),
+                        contentDescription = stringResource(R.string.icon_desc_back),
                         tint = Color.White,
-                        modifier = Modifier.size(24.dp),
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(24.dp),
                     )
                 }
                 Spacer(Modifier.width(12.dp))
@@ -251,9 +252,9 @@ fun AddonsScreen(
                         focusedContentColor = Color.White,
                     ),
                     scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+                    enabled = !connecting,
                     modifier = Modifier
                         .size(100.dp)
-                        .enabled(!connecting)
                         .onFocusChanged { connectFocused = it.isFocused }
                         .tvFocus(connectFocused, RoundedCornerShape(12.dp)),
                 ) {
@@ -348,8 +349,6 @@ fun AddonsScreen(
                                     ),
                                     scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(20.dp))
-                                        .padding(horizontal = 16.dp, vertical = 8.dp)
                                         .onFocusChanged { pillFocused = it.isFocused }
                                         .tvFocus(pillFocused, RoundedCornerShape(20.dp)),
                                 ) {
@@ -361,6 +360,7 @@ fun AddonsScreen(
                                         ),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                     )
                                 }
                                 // Selection happens on OK click only — navigating the
@@ -457,7 +457,9 @@ fun AddonsScreen(
                                     .tvFocus(streamBtnFocused, RoundedCornerShape(8.dp)),
                             ) {
                                 Row(
-                                    modifier = Modifier.fillMaxSize(),
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 12.dp),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {

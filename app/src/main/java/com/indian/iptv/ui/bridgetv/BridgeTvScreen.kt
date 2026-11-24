@@ -691,7 +691,7 @@ fun BridgeTvScreen(
                             fetching -> "Loading catalogues $loadedCatalogCount/$totalCatalogCount…"
                             loadingMore -> "Loading more catalogues $loadedCatalogCount/$totalCatalogCount…"
                             else -> {
-                                val resolvingLabel = entries.find { it.id == resolvingId }?.meta.name
+                                val resolvingLabel = entries.find { it.id == resolvingId }?.meta?.name
                                 "Checking streams $checkedCount/${entries.size}…${resolvingLabel?.let { " ($it)" } ?: ""}"
                             }
                         },
@@ -881,12 +881,14 @@ private fun BridgeChannelRow(
 private fun TvPillButton(
     label: String,
     selected: Boolean = false,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(999.dp)
     Surface(
         onClick = onClick,
+        enabled = enabled,
         shape = ClickableSurfaceDefaults.shape(shape),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (selected) IptvPalette.Accent else IptvPalette.SurfaceElevated.copy(alpha = 0.7f),
