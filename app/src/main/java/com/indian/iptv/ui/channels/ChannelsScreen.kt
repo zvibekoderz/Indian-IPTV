@@ -1647,7 +1647,7 @@ private fun SearchChip(onClick: () -> Unit, active: Boolean = false) {
     val container = when {
         active -> IptvPalette.Accent
         focused -> IptvPalette.Accent
-        else -> IptvPalette.SurfaceElevated.copy(alpha = 0.6f),
+        else -> IptvPalette.SurfaceElevated.copy(alpha = 0.6f)
     }
     Surface(
         onClick = onClick,
