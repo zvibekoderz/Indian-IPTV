@@ -51,6 +51,7 @@ import com.indian.iptv.data.ContentType
 import com.indian.iptv.data.addon.StremioAddon
 import com.indian.iptv.ui.channels.PosterCard
 import com.indian.iptv.ui.theme.IptvPalette
+import com.indian.iptv.ui.theme.tvFocus
 import kotlinx.coroutines.launch
 
 /**
@@ -73,9 +74,12 @@ fun AddonsScreen(
     var addon by remember { mutableStateOf<StremioAddon?>(null) }
     var manifest by remember { mutableStateOf<StremioAddon.Manifest?>(null) }
     var loading by remember { mutableStateOf(false) }
+    var connecting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    var selectedIndex by remember { mutableIntStateOf(0) }
+    // Remember the last-selected catalogue per add-on URL so returning to the screen
+    // lands on the same catalogue instead of always the first one.
+    var selectedIndex by remember(activeUrl) { mutableIntStateOf(0) }
     var metas by remember { mutableStateOf<List<StremioAddon.Meta>>(emptyList()) }
     var pendingMeta by remember { mutableStateOf<StremioAddon.Meta?>(null) }
     var streams by remember { mutableStateOf<List<StremioAddon.Stream>>(emptyList()) }
@@ -183,21 +187,30 @@ fun AddonsScreen(
                 Spacer(Modifier.width(12.dp))
                 Button(
                     onClick = {
+                        connecting = true
                         scope.launch {
                             app.settings.setAddonUrl(input)
                             activeUrl = input
+                            connecting = false
                         }
                     },
-                ) { Text("Connect") }
+                    enabled = !connecting,
+                ) {
+                    Text(if (connecting) "Connecting…" else "Connect")
+                }
             }
             Spacer(Modifier.height(12.dp))
+            var urlFocused by remember { mutableStateOf(false) }
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
                 label = { androidx.compose.material3.Text("Add-on URL (manifest.json or host)") },
                 placeholder = { androidx.compose.material3.Text("http://127.0.0.1:8080/manifest.json") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(0.72f),
+                modifier = Modifier
+                    .fillMaxWidth(0.72f)
+                    .onFocusChanged { urlFocused = it.isFocused }
+                    .tvFocus(urlFocused, RoundedCornerShape(8.dp)),
             )
             Text(
                 text = "CNCVerse Bridge shows this URL when its server is running. " +
@@ -255,9 +268,9 @@ fun AddonsScreen(
                                         .background(if (active) IptvPalette.Accent else IptvPalette.SurfaceLift)
                                         .padding(horizontal = 16.dp, vertical = 8.dp)
                                         .clickable { selectedIndex = index }
-                                        .onFocusChanged { state ->
-                                            if (state.hasFocus && !active) selectedIndex = index
-                                        },
+                                        // Selection happens on OK click only — navigating the
+                                        // D-pad across catalog pills must not switch the
+                                        // catalogue out from under the user.
                                 )
                             }
                         }
@@ -300,7 +313,7 @@ fun AddonsScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(androidx.compose.ui.graphics.Color(0xCC000000)),
+                    .background(IptvPalette.BackgroundDeep.copy(alpha = 0.82f)),
                 contentAlignment = Alignment.Center,
             ) {
                 Column(
@@ -336,6 +349,10 @@ fun AddonsScreen(
                             ) { Text(stream.label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                         }
                     }
+                    Text(
+                        text = stringResource(R.string.keyhint_ok_play) + "  ·  " + stringResource(R.string.keyhint_back_exit),
+                        style = MaterialTheme.typography.labelSmall.copy(color = IptvPalette.TextTertiary),
+                    )
                     Button(onClick = { pendingMeta = null }) { Text("Close") }
                 }
             }

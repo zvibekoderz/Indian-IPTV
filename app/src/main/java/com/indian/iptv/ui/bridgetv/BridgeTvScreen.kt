@@ -612,12 +612,18 @@ fun BridgeTvScreen(
                     modifier = Modifier.fillMaxWidth(0.62f),
                 )
                 Spacer(Modifier.width(16.dp))
-                TvPillButton(label = "Connect") {
-                    scope.launch {
-                        app.settings.setAddonUrl(input)
-                        activeUrl = input
-                    }
-                }
+                TvPillButton(
+                    label = if (connecting) "Connecting…" else "Connect",
+                    onClick = {
+                        connecting = true
+                        scope.launch {
+                            app.settings.setAddonUrl(input)
+                            activeUrl = input
+                            connecting = false
+                        }
+                    },
+                    enabled = !connecting,
+                )
             }
             Text(
                 text = "CNCVerse Bridge shows this URL when its server is running. " +
@@ -626,7 +632,7 @@ fun BridgeTvScreen(
                 modifier = Modifier.padding(top = 4.dp),
             )
             addonError?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFFFF6B6B)))
+                Text(it, style = MaterialTheme.typography.bodySmall.copy(color = IptvPalette.AccentSoft))
             }
 
             Spacer(Modifier.height(10.dp))
@@ -684,14 +690,17 @@ fun BridgeTvScreen(
                             connecting -> "Connecting…"
                             fetching -> "Loading catalogues $loadedCatalogCount/$totalCatalogCount…"
                             loadingMore -> "Loading more catalogues $loadedCatalogCount/$totalCatalogCount…"
-                            else -> "Checking streams $checkedCount/${entries.size}…"
+                            else -> {
+                                val resolvingLabel = entries.find { it.id == resolvingId }?.meta.name
+                                "Checking streams $checkedCount/${entries.size}…${resolvingLabel?.let { " ($it)" } ?: ""}"
+                            }
                         },
                         style = MaterialTheme.typography.bodySmall.copy(color = IptvPalette.TextSecondary),
                     )
                 }
                 checkError?.let {
                     Spacer(Modifier.width(12.dp))
-                    Text(it, style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFFFF6B6B)))
+                    Text(it, style = MaterialTheme.typography.bodySmall.copy(color = IptvPalette.AccentSoft))
                 }
             }
 
@@ -840,25 +849,27 @@ private fun BridgeChannelRow(
             }
         }
         Spacer(Modifier.width(10.dp))
-        var starFocused by remember { mutableStateOf(false) }
+        // The favourite star is a visual indicator plus a secondary action reachable via
+        // long-OK on the row — it is deliberately NOT a separate D-pad focus stop, which
+        // would double the button presses needed to move between channels.
         Surface(
             onClick = onToggleFavourite,
             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(999.dp)),
             colors = ClickableSurfaceDefaults.colors(
                 containerColor = IptvPalette.SurfaceElevated.copy(alpha = 0.55f),
                 focusedContainerColor = IptvPalette.SurfaceLift,
-                contentColor = if (isFavourite) Color(0xFFFFC107) else IptvPalette.TextSecondary,
+                contentColor = if (isFavourite) IptvPalette.AccentSoft else IptvPalette.TextSecondary,
                 focusedContentColor = Color.White,
             ),
             scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
-            modifier = Modifier
-                .onFocusChanged { starFocused = it.isFocused }
-                .tvFocus(starFocused, RoundedCornerShape(999.dp)),
+            // No focus state tracking: the star is a secondary action reachable via
+            // long-OK on the row, not a separate D-pad stop.
+            modifier = Modifier,
         ) {
             Icon(
                 imageVector = Icons.Filled.Star,
                 contentDescription = if (isFavourite) "Remove from favourites" else "Add to favourites",
-                tint = if (isFavourite) Color(0xFFFFC107) else Color(0xFF9A9AA4),
+                tint = if (isFavourite) IptvPalette.AccentSoft else IptvPalette.TextTertiary,
                 modifier = Modifier.padding(12.dp).size(22.dp),
             )
         }
