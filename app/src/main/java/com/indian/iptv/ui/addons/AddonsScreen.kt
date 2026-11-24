@@ -16,7 +16,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
@@ -32,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -42,9 +48,12 @@ import androidx.tv.foundation.lazy.grid.items
 import androidx.tv.foundation.lazy.list.TvLazyRow
 import androidx.tv.foundation.lazy.list.itemsIndexed as rowItemsIndexed
 import androidx.tv.material3.Button
+import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.compose.material3.Icon
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.indian.iptv.ui.theme.tvFocus
 import com.indian.iptv.IptvApp
 import com.indian.iptv.data.Channel
 import com.indian.iptv.data.ContentType
@@ -81,6 +90,8 @@ fun AddonsScreen(
     // lands on the same catalogue instead of always the first one.
     var selectedIndex by remember(activeUrl) { mutableIntStateOf(0) }
     var metas by remember { mutableStateOf<List<StremioAddon.Meta>>(emptyList()) }
+    val catalogFocus = remember { FocusRequester() }
+    val gridFocus = remember { FocusRequester() }
     var pendingMeta by remember { mutableStateOf<StremioAddon.Meta?>(null) }
     var streams by remember { mutableStateOf<List<StremioAddon.Stream>>(emptyList()) }
 
@@ -154,6 +165,17 @@ fun AddonsScreen(
         loading = false
     }
 
+    // Focus the first catalogue pill when the catalogue list appears so D-pad
+    // navigation lands on something focusable instead of wandering the URL field.
+    LaunchedEffect(catalogs.isNotEmpty()) {
+        if (catalogs.isNotEmpty()) runCatching { catalogFocus.requestFocus() }
+    }
+
+    // Focus the first poster in the grid when a catalogue's items load.
+    LaunchedEffect(metas.isNotEmpty()) {
+        if (metas.isNotEmpty()) runCatching { gridFocus.requestFocus() }
+    }
+
     BackHandler {
         if (pendingMeta != null) pendingMeta = null else onBack()
     }
@@ -183,9 +205,32 @@ fun AddonsScreen(
                     ),
                 )
                 Spacer(Modifier.weight(1f))
-                Button(onClick = onBack) { Text("Back") }
+                var backFocused by remember { mutableStateOf(false) }
+                Surface(
+                    onClick = onBack,
+                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
+                    colors = ClickableSurfaceDefaults.colors(
+                        containerColor = IptvPalette.SurfaceElevated.copy(alpha = 0.6f),
+                        focusedContainerColor = IptvPalette.Accent,
+                        contentColor = Color.White,
+                        focusedContentColor = Color.White,
+                    ),
+                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+                    modifier = Modifier
+                        .size(44.dp)
+                        .onFocusChanged { backFocused = it.isFocused }
+                        .tvFocus(backFocused, RoundedCornerShape(12.dp)),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.channels_settings_hint),
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
                 Spacer(Modifier.width(12.dp))
-                Button(
+                var connectFocused by remember { mutableStateOf(false) }
+                Surface(
                     onClick = {
                         connecting = true
                         scope.launch {
@@ -194,9 +239,39 @@ fun AddonsScreen(
                             connecting = false
                         }
                     },
-                    enabled = !connecting,
+                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
+                    colors = ClickableSurfaceDefaults.colors(
+                        containerColor = if (connecting) IptvPalette.TextTertiary else IptvPalette.Accent,
+                        focusedContainerColor = IptvPalette.AccentDeep,
+                        contentColor = Color.White,
+                        focusedContentColor = Color.White,
+                    ),
+                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+                    modifier = Modifier
+                        .size(100.dp)
+                        .enabled(!connecting)
+                        .onFocusChanged { connectFocused = it.isFocused }
+                        .tvFocus(connectFocused, RoundedCornerShape(12.dp)),
                 ) {
-                    Text(if (connecting) "Connecting…" else "Connect")
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Cloud,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = if (connecting) "Connecting…" else "Connect",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.SemiBold,
+                            ),
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(12.dp))
@@ -250,28 +325,43 @@ fun AddonsScreen(
                         Text("This add-on publishes no catalogues.", style = MaterialTheme.typography.bodyMedium)
                     } else {
                         TvLazyRow(
+                            state = androidx.tv.foundation.lazy.list.rememberTvLazyListState(),
                             contentPadding = PaddingValues(vertical = 4.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.focusRequester(catalogFocus),
                         ) {
                             rowItemsIndexed(catalogs) { index, catalog ->
                                 val active = index == selectedIndex
-                                Text(
-                                    text = "${catalog.name} · ${catalog.type}",
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        color = if (active) IptvPalette.BackgroundDeep else IptvPalette.TextPrimary,
-                                        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                                var pillFocused by remember { mutableStateOf(false) }
+                                Surface(
+                                    onClick = { selectedIndex = index },
+                                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(20.dp)),
+                                    colors = ClickableSurfaceDefaults.colors(
+                                        containerColor = if (active) IptvPalette.Accent else IptvPalette.SurfaceLift,
+                                        focusedContainerColor = if (active) IptvPalette.AccentDeep else IptvPalette.SurfaceElevated,
+                                        contentColor = if (active) IptvPalette.BackgroundDeep else IptvPalette.TextPrimary,
+                                        focusedContentColor = Color.White,
                                     ),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(20.dp))
-                                        .background(if (active) IptvPalette.Accent else IptvPalette.SurfaceLift)
                                         .padding(horizontal = 16.dp, vertical = 8.dp)
-                                        .clickable { selectedIndex = index }
-                                        // Selection happens on OK click only — navigating the
-                                        // D-pad across catalog pills must not switch the
-                                        // catalogue out from under the user.
-                                )
+                                        .onFocusChanged { pillFocused = it.isFocused }
+                                        .tvFocus(pillFocused, RoundedCornerShape(20.dp)),
+                                ) {
+                                    Text(
+                                        text = "${catalog.name} · ${catalog.type}",
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            color = if (active || pillFocused) Color.White else IptvPalette.TextPrimary,
+                                            fontWeight = if (active || pillFocused) FontWeight.Bold else FontWeight.Normal,
+                                        ),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                                // Selection happens on OK click only — navigating the
+                                // D-pad across catalog pills must not switch the
+                                // catalogue out from under the user.
                             }
                         }
                         Spacer(Modifier.height(12.dp))
@@ -283,7 +373,9 @@ fun AddonsScreen(
                         }
                         TvLazyVerticalGrid(
                             columns = TvGridCells.Adaptive(168.dp),
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .focusRequester(gridFocus),
                             contentPadding = PaddingValues(bottom = 48.dp),
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                             verticalArrangement = Arrangement.spacedBy(20.dp),
@@ -337,7 +429,8 @@ fun AddonsScreen(
                             style = MaterialTheme.typography.bodyMedium.copy(color = IptvPalette.AccentSoft),
                         )
                         else -> streams.forEach { stream ->
-                            Button(
+                            var streamBtnFocused by remember { mutableStateOf(false) }
+                            Surface(
                                 onClick = {
                                     onPlay(
                                         stream.url,
@@ -345,8 +438,41 @@ fun AddonsScreen(
                                         stream.headers,
                                     )
                                 },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) { Text(stream.label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+                                colors = ClickableSurfaceDefaults.colors(
+                                    containerColor = IptvPalette.SurfaceElevated,
+                                    focusedContainerColor = IptvPalette.Accent,
+                                    contentColor = IptvPalette.TextPrimary,
+                                    focusedContentColor = Color.White,
+                                ),
+                                scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(40.dp)
+                                    .onFocusChanged { streamBtnFocused = it.isFocused }
+                                    .tvFocus(streamBtnFocused, RoundedCornerShape(8.dp)),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxSize(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.PlayArrow,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                    Text(
+                                        text = stream.label,
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.SemiBold,
+                                        ),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
                         }
                     }
                     Text(
