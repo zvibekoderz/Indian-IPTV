@@ -13,3 +13,11 @@ sealed interface SourceConfig {
 
     data class Xtream(val host: String, val username: String, val password: String) : SourceConfig
 }
+
+/** Identifies one add-on in a manifest list. Index is stable across refreshes. */
+data class AddonSource(
+    val index: Int,
+    val url: String,
+    val name: String = "Add-on",
+    val enabled: Boolean = true,
+)

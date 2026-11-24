@@ -356,7 +356,6 @@ private fun AppRouteHost(
                 onOpenCategories = { type, category -> onNavigate(Route.Categories(type, category)) },
                 onOpenGuide = { onNavigate(Route.Guide) },
                 onOpenAddons = { onNavigate(Route.Addons) },
-                onOpenBridgeTv = { onNavigate(Route.BridgeTv) },
                 onOpenProfiles = { onNavigate(Route.Profiles) },
                 onPlay = { channel, list ->
                     when (channel.type) {

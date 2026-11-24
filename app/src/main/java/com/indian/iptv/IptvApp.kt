@@ -14,6 +14,9 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.indian.iptv.data.addon.AddonBootResolver
+import com.indian.iptv.data.addon.AddonStreamCache
+import com.indian.iptv.data.addon.AddonStreamResolver
 import com.indian.iptv.data.addon.BridgeTvCache
 import com.indian.iptv.data.db.IptvDatabase
 import com.indian.iptv.data.remote.HttpClient
@@ -35,10 +38,13 @@ class IptvApp : Application(), ImageLoaderFactory {
 
     val settings: SettingsStore by lazy { SettingsStore(this) }
     val database: IptvDatabase by lazy { IptvDatabase.get(this) }
+    val addonStreamResolver: AddonStreamResolver by lazy { AddonStreamResolver(database.channelDao()) }
+    val addonBootResolver: AddonBootResolver by lazy { AddonBootResolver(this) }
     val refreshUseCase: PlaylistRefreshUseCase by lazy {
         PlaylistRefreshUseCase(
             settings = settings,
             dao = database.channelDao(),
+            addonResolver = addonStreamResolver,
             onCatalogueChanged = { tmdbMovieDetails.invalidateMovieIndex() },
         )
     }
@@ -89,6 +95,8 @@ class IptvApp : Application(), ImageLoaderFactory {
         HttpClient.init(this)
         // Persistent cache for the Bridge TV tab (probe + search results).
         BridgeTvCache.init(this)
+        // Cache of probed add-on streams (best + instant playback fallbacks).
+        AddonStreamCache.init(this)
         // Bundled mitthu786/tvepg name -> id/logo map used to enrich M3U channels.
         TvepgCatalogue.load(this)
 
@@ -104,7 +112,17 @@ class IptvApp : Application(), ImageLoaderFactory {
         }
         EpgRefreshWorker.schedule(this)
         reminders.start()
+
+        // Boot/app-start stream resolution is background and upgrade-only: the home
+        // screen opens on the last-known best link and rows are upgraded as probes finish.
+        // A short delay keeps the first frame and catalogue refresh uncontended.
+        appScope.launch {
+            kotlinx.coroutines.delay(3_000L)
+            runCatching { addonBootResolver.resolveAllIfEnabled() }
+                .onFailure { android.util.Log.w("IptvApp", "Boot resolution failed", it) }
+        }
     }
+
 
     /**
      * Explicit Coil configuration. Defaults allocate ~15% of heap to memory cache

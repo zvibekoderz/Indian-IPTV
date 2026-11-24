@@ -968,8 +968,26 @@ internal fun normalizeForSearch(text: String): String =
 
 private val COMBINING_MARKS = Regex("\\p{M}+")
 
-/** Channels that are favourites, in the order of [favoriteIds] (the user's own order). */
+/** Channels that are favourites, in the order of [favoriteIds] (the user's own order).
+ *  Auto-favourited add-on VIP/Udaya/Kannada channels lead the list; everything else
+ *  keeps the user's ordering. */
 internal fun inFavoriteOrder(channels: List<Channel>, favoriteIds: Set<String>): List<Channel> {
     val byId = channels.associateBy { it.id }
-    return favoriteIds.mapNotNull { byId[it] }
+    val ordered = favoriteIds.mapNotNull { byId[it] }
+    val priority = ordered.filter { it.id.startsWith("addon:") && favouritePriorityRank(it) < 3 }
+        .sortedBy(::favouritePriorityRank)
+    if (priority.isEmpty()) return ordered
+    val priorityIds = priority.mapTo(HashSet()) { it.id }
+    return priority + ordered.filterNot { it.id in priorityIds }
+}
+
+/** JIOTV VIP → Udaya/udya → other Kannada, matching the add-on favourites order. */
+private fun favouritePriorityRank(channel: Channel): Int {
+    val text = "${channel.name} ${channel.groupTitle.orEmpty()}".lowercase()
+    return when {
+        listOf("jio vip", "jiotv vip", "vip (jiotv").any { it in text } -> 0
+        "udya" in text || "udaya" in text -> 1
+        "kannada" in text -> 2
+        else -> 3
+    }
 }

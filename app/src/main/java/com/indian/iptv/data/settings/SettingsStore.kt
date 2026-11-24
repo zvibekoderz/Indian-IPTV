@@ -123,6 +123,65 @@ class SettingsStore(private val context: Context) {
      */
     val addonUrl: Flow<String> = context.dataStore.data.map { it[ADDON_URL].orEmpty() }
 
+    /**
+     * Every configured Stremio-compatible add-on manifest URL, in order.
+     * Migrates the older single-URL key on first read so existing Bridge users
+     * keep their source. The index in this list is part of the add-on channel id,
+     * so reordering changes identity (reordering sources is rare).
+     */
+    val addonUrls: Flow<List<String>> = context.dataStore.data.map { prefs ->
+        val multi = prefs[ADDON_URLS]
+            ?.split('\n')
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+        if (!multi.isNullOrEmpty()) multi
+        else listOfNotNull(prefs[ADDON_URL]?.trim()?.takeIf { it.isNotBlank() })
+    }
+
+    suspend fun setAddonUrls(urls: List<String>) {
+        val clean = urls.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        context.dataStore.edit { prefs ->
+            if (clean.isEmpty()) {
+                prefs.remove(ADDON_URLS)
+                prefs.remove(ADDON_URL)
+            } else {
+                prefs[ADDON_URLS] = clean.joinToString("\n")
+                prefs[ADDON_URL] = clean.first()
+            }
+        }
+    }
+
+    /** Whether add-on streams are imported into the main catalogue at all. */
+    val addonsEnabled: Flow<Boolean> = context.dataStore.data.map { it[ADDONS_ENABLED] ?: false }
+
+    suspend fun setAddonsEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs -> prefs[ADDONS_ENABLED] = enabled }
+    }
+
+    /** Re-probe and upgrade add-on streams in the background whenever the TV boots. */
+    val addonBootResolution: Flow<Boolean> = context.dataStore.data.map { it[ADDON_BOOT_RESOLUTION] ?: true }
+
+    suspend fun setAddonBootResolution(enabled: Boolean) {
+        context.dataStore.edit { prefs -> prefs[ADDON_BOOT_RESOLUTION] = enabled }
+    }
+
+    /**
+     * Result of the last boot / manual add-on stream resolution, shown in Settings.
+     * Format: "working|dead|total".
+     */
+    val lastAddonResolution: Flow<String> = context.dataStore.data.map { it[LAST_ADDON_RESOLUTION].orEmpty() }
+
+    suspend fun setLastAddonResolution(working: Int, dead: Int, total: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[LAST_ADDON_RESOLUTION] = "$working|$dead|$total"
+            prefs[LAST_ADDON_RESOLUTION_AT] = System.currentTimeMillis()
+        }
+    }
+
+    /** Epoch millis of the last stream-resolution pass; 0 = never. */
+    val lastAddonResolutionAt: Flow<Long> =
+        context.dataStore.data.map { it[LAST_ADDON_RESOLUTION_AT] ?: 0L }
+
     suspend fun setAddonUrl(value: String) {
         context.dataStore.edit { prefs ->
             val clean = value.trim()
@@ -351,6 +410,11 @@ class SettingsStore(private val context: Context) {
         val PLAYLIST_ETAG = stringPreferencesKey("playlist_etag")
         val PLAYLIST_LAST_MODIFIED = stringPreferencesKey("playlist_last_modified")
         val ADDON_URL = stringPreferencesKey("stremio_addon_url")
+        val ADDON_URLS = stringPreferencesKey("stremio_addon_urls")
+        val ADDONS_ENABLED = booleanPreferencesKey("addons_enabled")
+        val ADDON_BOOT_RESOLUTION = booleanPreferencesKey("addon_boot_resolution")
+        val LAST_ADDON_RESOLUTION = stringPreferencesKey("last_addon_resolution")
+        val LAST_ADDON_RESOLUTION_AT = longPreferencesKey("last_addon_resolution_at")
         val BRIDGE_FAVOURITES = stringPreferencesKey("bridge_tv_favourites")
         val BRIDGE_FAVOURITE_DISMISSALS = stringPreferencesKey("bridge_tv_favourite_dismissals")
         val BRIDGE_AUTO_LAUNCH = booleanPreferencesKey("bridge_auto_launch")

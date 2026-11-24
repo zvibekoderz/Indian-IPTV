@@ -16,6 +16,8 @@ import com.indian.iptv.data.settings.SourceTestResult
 import com.indian.iptv.data.settings.PhoneSetupServer
 import com.indian.iptv.IptvApp
 import com.indian.iptv.R
+import com.indian.iptv.data.db.AddonDeadStreamEntity
+import com.indian.iptv.data.addon.StremioAddon
 import com.indian.iptv.data.settings.DEFAULT_M3U_URL
 import com.indian.iptv.data.settings.SourceConfig
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -48,6 +50,15 @@ data class SettingsUiState(
     val testResult: SourceTestResult? = null,
     /** Set when a phone just sent the form, so the screen can say so. */
     val filledFromPhone: Boolean = false,
+    // ── Add-on sources ────────────────────────────────────────────────
+    val addonUrls: List<String> = emptyList(),
+    val addonsEnabled: Boolean = false,
+    val addonBootResolution: Boolean = true,
+    val lastAddonResolution: String = "",
+    val deadLinks: List<AddonDeadStreamEntity> = emptyList(),
+    val addonTesting: Boolean = false,
+    val addonTestResult: String? = null,
+    val addonsSaved: Boolean = false,
 )
 
 /** Language choices offered for audio and subtitles, as ISO 639-1 codes ("" = no preference). */
@@ -109,6 +120,32 @@ class SettingsViewModel : ViewModel() {
             .launchIn(viewModelScope)
         app.refreshUseCase.lastError
             .onEach { e -> _state.update { it.copy(refreshError = e) } }
+            .launchIn(viewModelScope)
+
+        // Add-on sources + persistent dead-link list.
+        app.settings.addonUrls
+            .onEach { urls -> _state.update { it.copy(addonUrls = urls.ifEmpty { listOf("") }) } }
+            .launchIn(viewModelScope)
+        app.settings.addonsEnabled
+            .onEach { v -> _state.update { it.copy(addonsEnabled = v) } }
+            .launchIn(viewModelScope)
+        app.settings.addonBootResolution
+            .onEach { v -> _state.update { it.copy(addonBootResolution = v) } }
+            .launchIn(viewModelScope)
+        app.settings.lastAddonResolution
+            .onEach { v -> _state.update { it.copy(lastAddonResolution = v) } }
+            .launchIn(viewModelScope)
+        app.database.channelDao().observeDeadAddonStreams()
+            .onEach { v -> _state.update { it.copy(deadLinks = v) } }
+            .launchIn(viewModelScope)
+        app.addonBootResolver.state
+            .onEach { s ->
+                if (s.running) {
+                    _state.update {
+                        it.copy(lastAddonResolution = "${s.working} working · ${s.dead} dead · ${s.done}/${s.total} checked")
+                    }
+                }
+            }
             .launchIn(viewModelScope)
     }
 
@@ -275,6 +312,87 @@ class SettingsViewModel : ViewModel() {
     fun refreshNow() {
         if (_state.value.refreshing) return
         app.appScope.launch { app.refreshUseCase() }
+    }
+
+    // ── Add-on sources ────────────────────────────────────────────────
+
+    fun setAddonUrl(index: Int, value: String) {
+        _state.update { state ->
+            val urls = state.addonUrls.toMutableList()
+            if (index !in urls.indices) return@update state
+            urls[index] = value
+            state.copy(addonUrls = urls, addonsSaved = false)
+        }
+    }
+
+    fun addAddonUrl() {
+        _state.update { it.copy(addonUrls = it.addonUrls + "", addonsSaved = false) }
+    }
+
+    fun removeAddonUrl(index: Int) {
+        _state.update { state ->
+            val urls = state.addonUrls.toMutableList()
+            if (index !in urls.indices) return@update state
+            urls.removeAt(index)
+            state.copy(addonUrls = urls.ifEmpty { listOf("") }, addonsSaved = false)
+        }
+    }
+
+    fun setAddonsEnabled(enabled: Boolean) {
+        _state.update { it.copy(addonsEnabled = enabled, addonsSaved = false) }
+        viewModelScope.launch { app.settings.setAddonsEnabled(enabled) }
+    }
+
+    fun setAddonBootResolution(enabled: Boolean) {
+        _state.update { it.copy(addonBootResolution = enabled) }
+        viewModelScope.launch { app.settings.setAddonBootResolution(enabled) }
+    }
+
+    /** Persist the add-on source list and immediately import its catalogues when enabled. */
+    fun saveAddons(onDone: () -> Unit = {}) {
+        val urls = _state.value.addonUrls.map { it.trim() }.filter { it.isNotBlank() }
+        viewModelScope.launch {
+            app.settings.setAddonUrls(urls)
+            if (urls.isNotEmpty() && !_state.value.addonsEnabled) {
+                app.settings.setAddonsEnabled(true)
+                _state.update { it.copy(addonsEnabled = true) }
+            }
+            _state.update { it.copy(addonsSaved = true, addonTestResult = null) }
+            if (urls.isNotEmpty()) app.appScope.launch { app.refreshUseCase(force = true) }
+            onDone()
+        }
+    }
+
+    fun testAddonUrl() {
+        val raw = _state.value.addonUrls.firstOrNull().orEmpty()
+        val addon = StremioAddon.create(raw)
+        if (addon == null) {
+            _state.update { it.copy(addonTestResult = "Enter a valid http(s) add-on URL") }
+            return
+        }
+        _state.update { it.copy(addonTesting = true, addonTestResult = null) }
+        viewModelScope.launch {
+            val result = runCatching { addon.manifest() }
+                .map { m -> "Reachable · ${m.name} · ${m.catalogs.size} catalogues" }
+                .getOrElse { "Unreachable: ${it.message ?: "unknown error"}" }
+            _state.update { it.copy(addonTesting = false, addonTestResult = result) }
+        }
+    }
+
+    fun resolveAddonStreamsNow() {
+        app.appScope.launch { app.addonBootResolver.resolveAll() }
+    }
+
+    fun retestDeadLink(url: String) {
+        app.appScope.launch { app.addonStreamResolver.retest(url) }
+    }
+
+    fun removeDeadLink(url: String) {
+        app.appScope.launch { app.addonStreamResolver.unmarkDead(url) }
+    }
+
+    fun clearDeadLinks() {
+        app.appScope.launch { app.addonStreamResolver.clearDead() }
     }
 
     private companion object {

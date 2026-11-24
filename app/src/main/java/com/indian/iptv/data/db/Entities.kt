@@ -28,6 +28,10 @@ data class ChannelEntity(
     val number: Int? = null,
     /** True when the stream or name indicates HD/720p/1080p/4K. */
     @androidx.room.ColumnInfo(defaultValue = "0") val isHd: Boolean = false,
+    /** Optional HTTP User-Agent required by an add-on/CDN stream. */
+    @androidx.room.ColumnInfo(defaultValue = "NULL") val userAgent: String? = null,
+    /** Optional HTTP Referer required by an add-on/CDN stream. */
+    @androidx.room.ColumnInfo(defaultValue = "NULL") val referrer: String? = null,
 )
 
 @Entity(
@@ -124,6 +128,17 @@ data class WatchedEpisodeEntity(
     val coverUrl: String?,
     val durationSecs: Long,
     val firstWatchedAt: Long,
+)
+
+@Entity(
+    tableName = "addon_dead_streams",
+    indices = [Index("checkedAt")],
+)
+data class AddonDeadStreamEntity(
+    @PrimaryKey val url: String,
+    val channelId: String? = null,
+    val reason: String? = null,
+    val checkedAt: Long,
 )
 
 /** Lightweight projection used by replaceAll() to preserve addedAt across refreshes. */

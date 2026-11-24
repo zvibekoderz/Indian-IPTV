@@ -20,8 +20,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ProfileEntity::class,
         WatchlistEntity::class,
         ReminderEntity::class,
+        AddonDeadStreamEntity::class,
     ],
-    version = 18,
+    version = 19,
     exportSchema = true,
 )
 abstract class IptvDatabase : RoomDatabase() {
@@ -138,6 +139,28 @@ abstract class IptvDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_channels_type ON channels(type)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_channels_addedAt ON channels(addedAt)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_channels_number ON channels(number)")
+            }
+        }
+
+        /** v18 → v19: add-on integration. Re-adds User-Agent/Referer columns removed in
+         * v18 because add-on CDN streams may require headers, and creates a persistent
+         * dead-stream table so confirmed-dead links stay out of future imports. */
+        private val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE channels ADD COLUMN userAgent TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE channels ADD COLUMN referrer TEXT DEFAULT NULL")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS addon_dead_streams (" +
+                        "url TEXT NOT NULL PRIMARY KEY, " +
+                        "channelId TEXT, " +
+                        "reason TEXT, " +
+                        "checkedAt INTEGER NOT NULL" +
+                    ")",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_addon_dead_streams_checkedAt " +
+                        "ON addon_dead_streams(checkedAt)",
+                )
             }
         }
 
@@ -370,7 +393,7 @@ abstract class IptvDatabase : RoomDatabase() {
                         MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8,
                         MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11,
                         MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17,
-                        MIGRATION_17_18,
+                        MIGRATION_17_18, MIGRATION_18_19,
                     )
                     .addCallback(object : RoomDatabase.Callback() {
                         // Fresh installs skip migrations entirely — Room just builds tables

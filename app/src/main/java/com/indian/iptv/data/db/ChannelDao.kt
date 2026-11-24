@@ -188,6 +188,18 @@ interface ChannelDao {
     @Query("SELECT * FROM channels WHERE id = :id LIMIT 1")
     suspend fun getChannelById(id: String): ChannelEntity?
 
+    @Query("UPDATE channels SET streamUrl = :streamUrl, userAgent = :userAgent, referrer = :referrer WHERE id = :id")
+    suspend fun updateStream(id: String, streamUrl: String?, userAgent: String?, referrer: String?)
+
+    @Query("SELECT * FROM channels WHERE id LIKE 'addon:%' AND streamUrl IS NOT NULL")
+    suspend fun addonChannels(): List<ChannelEntity>
+
+    @Query("UPDATE channels SET streamUrl = NULL WHERE streamUrl = :url")
+    suspend fun clearStreamUrl(url: String)
+
+    @Query("DELETE FROM channels WHERE id LIKE 'addon:%'")
+    suspend fun deleteAddonChannels()
+
     /**
      * Up to `limit` other channels sharing the same groupTitle + type as `excludeId`.
      * Powers the "Meer in X" rail on detail screens.
@@ -375,6 +387,21 @@ interface ChannelDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putTmdbPopularCache(entry: TmdbPopularCacheEntity)
+
+    @Query("SELECT url FROM addon_dead_streams")
+    suspend fun deadAddonUrls(): List<String>
+
+    @Query("SELECT * FROM addon_dead_streams ORDER BY checkedAt DESC LIMIT :limit")
+    fun observeDeadAddonStreams(limit: Int = 200): Flow<List<AddonDeadStreamEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun addDeadAddonStream(entry: AddonDeadStreamEntity)
+
+    @Query("DELETE FROM addon_dead_streams WHERE url = :url")
+    suspend fun removeDeadAddonStream(url: String)
+
+    @Query("DELETE FROM addon_dead_streams")
+    suspend fun clearDeadAddonStreams()
 }
 
 data class SearchIndexRow(

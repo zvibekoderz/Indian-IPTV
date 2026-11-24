@@ -18,6 +18,8 @@ fun ChannelEntity.toDomain(): Channel = Channel(
     genres = if (genres.isBlank()) emptyList() else genres.split(',').filter { it.isNotBlank() },
     number = number,
     isHd = isHd,
+    userAgent = userAgent,
+    referrer = referrer,
 )
 
 fun Channel.toEntity(
@@ -38,4 +40,6 @@ fun Channel.toEntity(
     genres = genres.joinToString(","),
     number = number,
     isHd = isHd,
+    userAgent = userAgent,
+    referrer = referrer,
 )

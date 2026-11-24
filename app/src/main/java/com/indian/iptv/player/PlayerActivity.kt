@@ -528,11 +528,37 @@ class PlayerActivity : ComponentActivity() {
                 val httpStatus = generateSequence(error.cause) { it.cause }
                     .filterIsInstance<androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException>()
                     .firstOrNull()?.responseCode
-                // A Bridge TV channel can pass the reachability probe yet die during
+                // An add-on channel can pass the reachability probe yet die during
                 // real playback when its signed CDN token expires. Blacklist that URL
-                // so the Bridge TV screen hides it from cached results until TTL expiry.
+                // so it is never reused, then fall back to the next best probed link.
                 if (channel?.id?.startsWith("addon:") == true) {
-                    channel.streamUrl?.let { com.indian.iptv.data.addon.BridgeTvCache.markDead(it) }
+                    val failedUrl = channel.streamUrl
+                    if (failedUrl != null) {
+                        com.indian.iptv.data.addon.BridgeTvCache.markDead(failedUrl)
+                        val failedChannel = channel
+                        val indexAtFailure = currentIndex
+                        IptvApp.get().appScope.launch {
+                            val next = IptvApp.get().addonStreamResolver
+                                .onPlaybackFailure(failedChannel.id, failedUrl)
+                            if (next != null) {
+                                withContext(Dispatchers.Main) {
+                                    if (channels.getOrNull(indexAtFailure)?.id == failedChannel.id) {
+                                        channels = channels.mapIndexed { i, c ->
+                                            if (i == indexAtFailure) {
+                                                c.copy(
+                                                    streamUrl = next.url,
+                                                    userAgent = next.userAgent,
+                                                    referrer = next.referrer,
+                                                )
+                                            } else c
+                                        }
+                                        errorOverlay = null
+                                        playChannel(indexAtFailure)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 errorOverlay = ErrorState(
                     channelName = channel?.name.orEmpty(),

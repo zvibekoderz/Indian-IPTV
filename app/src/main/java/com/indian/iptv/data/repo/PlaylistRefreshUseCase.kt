@@ -14,6 +14,7 @@ import com.indian.iptv.data.db.CategoryEntity
 import com.indian.iptv.data.db.ChannelDao
 import com.indian.iptv.data.db.toEntity
 import com.indian.iptv.data.remote.HttpClient
+import com.indian.iptv.data.addon.AddonStreamResolver
 import com.indian.iptv.data.settings.SettingsStore
 import com.indian.iptv.data.settings.SourceConfig
 import com.indian.iptv.data.xtream.CategoryFilter
@@ -26,6 +27,7 @@ import com.indian.iptv.data.xtream.CategoryFilter
 class PlaylistRefreshUseCase(
     private val settings: SettingsStore,
     private val dao: ChannelDao,
+    private val addonResolver: AddonStreamResolver,
     private val onCatalogueChanged: () -> Unit = {},
 ) {
 
@@ -89,7 +91,7 @@ class PlaylistRefreshUseCase(
         return try {
             withContext(Dispatchers.IO) {
                 runCatching {
-                    val repo = repository() ?: return@runCatching
+                    val repo = primaryRepository() ?: error("No source configured.")
                     writeEpg(repo)
                 }.onFailure { Log.w(TAG, "EPG refresh failed", it) }
             }
@@ -108,7 +110,7 @@ class PlaylistRefreshUseCase(
         Log.i(TAG, "EPG refreshed: ${programmes.size} programmes")
     }
 
-    private suspend fun repository(): PlaylistRepository? =
+    private suspend fun primaryRepository(): PlaylistRepository? =
         when (val config = settings.sourceConfig.first()) {
             null -> null
             is SourceConfig.M3u -> M3uPlaylistRepository(config.urls, HttpClient.okHttp)
@@ -120,27 +122,47 @@ class PlaylistRefreshUseCase(
             )
         }
 
+    /** Main source first (its validators/EPG are authoritative), add-ons appended. */
+    private suspend fun repositories(): List<PlaylistRepository> {
+        val repos = ArrayList<PlaylistRepository>()
+        primaryRepository()?.let(repos::add)
+        val addonUrls = settings.addonUrls.first()
+        if (settings.addonsEnabled.first() && addonUrls.isNotEmpty()) {
+            repos += AddonPlaylistRepository(addonUrls, dao, settings, addonResolver)
+        }
+        return repos
+    }
+
     private suspend fun refresh(force: Boolean, onCatalogueReady: () -> Unit) {
-        val repo = repository() ?: error("No source configured.")
+        val repos = repositories()
+        if (repos.isEmpty()) error("No source configured.")
+        val primary = repos.first()
 
         val etag = if (force) null else settings.playlistEtag.first()
         val lastMod = if (force) null else settings.playlistLastModified.first()
-        val snapshot = repo.fetch(etag, lastMod) { p -> _progress.value = p }
-        if (snapshot.notModified) {
+        val snapshots = repos.map { repo ->
+            if (repo === primary) repo.fetch(etag, lastMod) { p -> _progress.value = p }
+            else repo.fetch(null, null) { p -> _progress.value = p }
+        }
+        if (snapshots.all { it.notModified }) {
             settings.markRefreshSuccess()
             onCatalogueReady()
-            epgMutex.withLock { runCatching { writeEpg(repo) } }
+            epgMutex.withLock { runCatching { writeEpg(primary) } }
             return
         }
 
         val t0 = SystemClock.elapsedRealtime()
-        val channels = snapshot.channels.mapIndexed { i, c -> c.toEntity(i) }
-        val categories = snapshot.channels
-            .mapNotNull { c -> c.groupTitle?.let { it to c.type.name } }
+        val channels = snapshots.flatMap { it.channels }.mapIndexed { i, c -> c.toEntity(i) }
+        val categories = snapshots.flatMap { snapshot ->
+            snapshot.channels
+                .mapNotNull { c -> c.groupTitle?.let { it to c.type.name } }
+                .distinct()
+        }
             .distinct()
             .mapIndexed { i, (name, type) ->
                 CategoryEntity(id = name, name = name, sortIndex = i, type = type)
             }
+        val programmes = snapshots.flatMap { it.programmes }
         val t1 = SystemClock.elapsedRealtime()
         Log.i(TAG, "Built ${channels.size} entities + ${categories.size} categories in ${t1 - t0}ms")
 
@@ -151,28 +173,29 @@ class PlaylistRefreshUseCase(
 
         // Commit the catalogue + validators now so a crash during the EPG write doesn't
         // force a full re-fetch on next launch.
-        settings.savePlaylistValidators(snapshot.etag, snapshot.lastModified)
+        val primarySnapshot = snapshots.first()
+        settings.savePlaylistValidators(primarySnapshot.etag, primarySnapshot.lastModified)
         settings.markRefreshSuccess()
         settings.setCatalogueVersion(CATALOGUE_VERSION)
         onCatalogueChanged()
         onCatalogueReady()
 
-        if (snapshot.programmes.isNotEmpty()) {
-            dao.replaceProgrammes(snapshot.programmes)
+        if (programmes.isNotEmpty()) {
+            dao.replaceProgrammes(programmes)
             settings.markEpgRefresh()
             val t3 = SystemClock.elapsedRealtime()
-            Log.i(TAG, "persisted ${snapshot.programmes.size} EPG programmes in ${t3 - t2}ms")
+            Log.i(TAG, "persisted ${programmes.size} EPG programmes in ${t3 - t2}ms")
         } else {
             // M3U snapshots carry no guide. Populate Now/Next from the bundled tvepg
             // feeds in the same refresh, now that the enriched epgChannelIds are stored.
-            epgMutex.withLock { runCatching { writeEpg(repo) } }
+            epgMutex.withLock { runCatching { writeEpg(primary) } }
         }
     }
 
     companion object {
         private const val TAG = "PlaylistRefresh"
         /** Bump when the stored catalogue gains data that only a full reload fills in. */
-        const val CATALOGUE_VERSION = 16
+        const val CATALOGUE_VERSION = 17
         const val EPG_MAX_AGE_MS: Long = 6L * 3_600_000L
     }
 }

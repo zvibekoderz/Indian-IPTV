@@ -81,6 +81,10 @@ fun SettingsScreen(
                 SourceSection(state = state, vm = vm, onSaved = onSaved, onBack = onBack)
             }
 
+            SettingsSection(title = "Add-ons") {
+                AddonsSection(state = state, vm = vm)
+            }
+
             SettingsSection(title = stringResource(R.string.settings_section_display)) {
                 SwitchRow(
                     title = stringResource(R.string.settings_trailers_title),
@@ -350,6 +354,104 @@ private fun SourceSection(
 
     Spacer(Modifier.height(4.dp))
     PhoneSetupPanel()
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun AddonsSection(state: SettingsUiState, vm: SettingsViewModel) {
+    SwitchRow(
+        title = "Import add-ons into main UI",
+        body = "Add-on catalogues appear as normal rails alongside M3U/Xtream.",
+        checked = state.addonsEnabled,
+        onToggle = { vm.setAddonsEnabled(!state.addonsEnabled) },
+    )
+    SwitchRow(
+        title = "Resolve streams on boot",
+        body = "Re-probe and upgrade to the best working link in the background. Home opens with the last-known best.",
+        checked = state.addonBootResolution,
+        onToggle = { vm.setAddonBootResolution(!state.addonBootResolution) },
+    )
+
+    state.addonUrls.forEachIndexed { index, url ->
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedTextField(
+                value = url,
+                onValueChange = { vm.setAddonUrl(index, it) },
+                label = {
+                    androidx.compose.material3.Text(
+                        if (index == 0) "Add-on manifest URL" else "Additional add-on URL",
+                    )
+                },
+                placeholder = { androidx.compose.material3.Text("http://192.168.1.5:8080/manifest.json") },
+                singleLine = true,
+                modifier = Modifier.width(640.dp),
+            )
+            Button(onClick = { vm.removeAddonUrl(index) }) {
+                Text(stringResource(R.string.settings_remove))
+            }
+        }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Button(onClick = vm::addAddonUrl) { Text("Add add-on URL") }
+        Button(onClick = vm::testAddonUrl) { Text(if (state.addonTesting) "Testing…" else "Test") }
+        Button(onClick = { vm.saveAddons() }) { Text("Save add-ons") }
+        Button(onClick = vm::resolveAddonStreamsNow) { Text("Resolve now") }
+    }
+    state.addonTestResult?.let {
+        Text(it, style = MaterialTheme.typography.bodySmall, color = IptvPalette.AccentSoft)
+    }
+    if (state.lastAddonResolution.isNotBlank()) {
+        Text(
+            "Last resolution: ${state.lastAddonResolution}",
+            style = MaterialTheme.typography.bodySmall,
+            color = IptvPalette.TextSecondary,
+        )
+    }
+    if (state.addonsSaved) {
+        Text("Add-on sources saved. Catalogues are importing in the background.",
+            style = MaterialTheme.typography.bodySmall, color = IptvPalette.AccentSoft)
+    }
+
+    Spacer(Modifier.height(4.dp))
+    Text(
+        "Dead / non-working links (${state.deadLinks.size})",
+        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+        color = IptvPalette.TextPrimary,
+    )
+    Text(
+        "Confirmed-dead links are never used again unless you retest them.",
+        style = MaterialTheme.typography.bodySmall,
+        color = IptvPalette.TextSecondary,
+    )
+    state.deadLinks.take(8).forEach { dead ->
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = dead.url.take(90),
+                style = MaterialTheme.typography.bodySmall,
+                color = IptvPalette.TextPrimary,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.width(480.dp),
+            )
+            Text(
+                text = dead.reason.orEmpty(),
+                style = MaterialTheme.typography.bodySmall,
+                color = IptvPalette.TextSecondary,
+                modifier = Modifier.width(140.dp),
+            )
+            Button(onClick = { vm.retestDeadLink(dead.url) }) { Text("Retest") }
+            Button(onClick = { vm.removeDeadLink(dead.url) }) { Text("Remove") }
+        }
+    }
+    if (state.deadLinks.isNotEmpty()) {
+        Button(onClick = vm::clearDeadLinks) { Text("Clear all dead links") }
+    }
 }
 
 @Composable
