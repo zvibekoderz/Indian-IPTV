@@ -236,6 +236,16 @@ private fun AppRoot(
 
     // Simple back stack on top of the computed root route (Welcome / ProfilePicker /
     // Channels), so BACK from a related title returns to the previous detail screen.
+    //
+    // Back contract (D-pad remote first):
+    //   * Detail screens (MovieDetail / SeriesDetail / Categories / Guide / Settings /
+    //     Profiles / ProfilePicker) push onto the stack; BACK pops to the previous route.
+    //   * Navigating to Channels clears the stack (home is the root).
+    //   * Settings / Profiles open behind PinGate when kids mode is locked.
+    //   * PlayerActivity is launched via intent (outside this Compose stack). BACK from the
+    //     player finishes PlayerActivity; MainActivity resumes on whichever route was
+    //     active before the player launched. Detail screens should pass onBack so the user
+    //     returns to Channels, not straight to the home screen.
     val backStack = remember { mutableStateListOf<Route>() }
     var pickerDismissed by remember { mutableStateOf(false) }
 

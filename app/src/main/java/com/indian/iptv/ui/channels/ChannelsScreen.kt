@@ -340,6 +340,15 @@ private fun NetflixLayout(
                         searchVisible = true
                         true
                     }
+                    android.view.KeyEvent.KEYCODE_HOME -> {
+                        // Jump straight to the hero / top of the rails so the user doesn't
+                        // have to crawl back up row-by-row with the D-pad.
+                        scope.launch {
+                            runCatching { railsListState.scrollToItem(0) }
+                            runCatching { tabFocusRequester.requestFocus() }
+                        }
+                        true
+                    }
                     else -> false
                 }
             },
@@ -357,6 +366,7 @@ private fun NetflixLayout(
             activeProfileName = state.activeProfileName,
             activeProfileColorArgb = state.activeProfileColorArgb,
             activeProfileEmoji = state.activeProfileEmoji,
+            searchActive = searchVisible,
             onFocusChanged = { topBarHasFocus = it },
         )
 
@@ -1249,6 +1259,7 @@ private fun TopBar(
     activeProfileName: String?,
     activeProfileColorArgb: Int?,
     activeProfileEmoji: String?,
+    searchActive: Boolean = false,
     onFocusChanged: (Boolean) -> Unit = {},
 ) {
     Row(
@@ -1268,7 +1279,7 @@ private fun TopBar(
         )
         Spacer(Modifier.weight(1f))
         // Focus targets (max 5): Search, Categories, Guide, Profile, Settings
-        SearchChip(onClick = onOpenSearch)
+        SearchChip(onClick = onOpenSearch, active = searchActive)
         Spacer(Modifier.width(12.dp))
         TabPill(
             label = stringResource(R.string.categories_open),
@@ -1622,24 +1633,29 @@ private fun TabPill(
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun SearchChip(onClick: () -> Unit) {
+private fun SearchChip(onClick: () -> Unit, active: Boolean = false) {
     var focused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         targetValue = if (focused) 1.08f else 1f,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "search-scale",
     )
-    // A single icon on a transparent pill reads as grey-on-grey against the ambient
-    // gradient; a filled pill with a bright tint makes it unambiguously a button.
-    // Tint on Icon is set explicitly — TV Surface's contentColor doesn't always
-    // propagate through LocalContentColor to child Icons.
+    // When search is open, tint the pill with the accent so the user can see at a glance
+    // which section is active. A filled pill with a bright tint reads as unambiguously a
+    // button; tint on Icon is set explicitly because TV Surface's contentColor doesn't
+    // always propagate through LocalContentColor to child Icons.
+    val container = when {
+        active -> IptvPalette.Accent
+        focused -> IptvPalette.Accent
+        else -> IptvPalette.SurfaceElevated.copy(alpha = 0.6f),
+    }
     Surface(
         onClick = onClick,
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(999.dp)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = IptvPalette.SurfaceElevated.copy(alpha = 0.6f),
+            containerColor = container,
             contentColor = Color.White,
-            focusedContainerColor = IptvPalette.Accent,
+            focusedContainerColor = if (active) IptvPalette.AccentDeep else IptvPalette.Accent,
             focusedContentColor = Color.White,
         ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
@@ -1751,12 +1767,18 @@ private fun HeroCarousel(
     }
     // Pause while the hero holds focus: rotating swaps the focused Play button out of the
     // composition (focus jumps away) and OK could start a title the user didn't see.
+    // `heroFocused` is checked inside the loop (updated via onFocusChanged on the hero box)
+    // so rotation genuinely pauses while the user is interacting with the banner.
     var heroFocused by remember { mutableStateOf(false) }
-    if (heroes.size > 1 && !heroFocused) {
+    if (heroes.size > 1) {
         LaunchedEffect(heroes) {
             while (true) {
-                kotlinx.coroutines.delay(HERO_ROTATE_MS)
-                index = (index + 1) % heroes.size
+                if (!heroFocused) {
+                    index = (index + 1) % heroes.size
+                }
+                // Poll at a quarter of the rotation interval so the pause/resume feels
+                // responsive rather than waiting up to a full HERO_ROTATE_MS.
+                kotlinx.coroutines.delay(HERO_ROTATE_MS / 4)
             }
         }
     }
