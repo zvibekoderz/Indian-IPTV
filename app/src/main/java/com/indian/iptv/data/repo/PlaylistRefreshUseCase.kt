@@ -12,6 +12,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import com.indian.iptv.data.db.CategoryEntity
 import com.indian.iptv.data.db.ChannelDao
+import com.indian.iptv.data.db.toDomain
 import com.indian.iptv.data.db.toEntity
 import com.indian.iptv.data.remote.HttpClient
 import com.indian.iptv.data.addon.AddonStreamResolver
@@ -157,12 +158,19 @@ class PlaylistRefreshUseCase(
         }
 
         val t0 = SystemClock.elapsedRealtime()
-        val channels = snapshots.flatMap { it.channels }.mapIndexed { i, c -> c.toEntity(i) }
-        val categories = snapshots.flatMap { snapshot ->
-            snapshot.channels
-                .mapNotNull { c -> c.groupTitle?.let { it to c.type.name } }
-                .distinct()
+        val domainChannels = snapshots.flatMap { it.channels }.toMutableList()
+        if (repos.size > 1) {
+            // Add-on catalog fetches are best-effort. A timeout on one large catalog must
+            // not delete rows from sources that were already imported — merge any stored
+            // add-on rows that this pass did not produce instead of losing them.
+            val existingAddon = runCatching { dao.addonChannels().map { it.toDomain() } }
+                .getOrDefault(emptyList())
+            val produced = domainChannels.mapTo(HashSet()) { it.id }
+            domainChannels += existingAddon.filterNot { it.id in produced }
         }
+        val channels = domainChannels.mapIndexed { i, c -> c.toEntity(i) }
+        val categories = domainChannels
+            .mapNotNull { c -> c.groupTitle?.let { it to c.type.name } }
             .distinct()
             .mapIndexed { i, (name, type) ->
                 CategoryEntity(id = name, name = name, sortIndex = i, type = type)
@@ -200,7 +208,7 @@ class PlaylistRefreshUseCase(
     companion object {
         private const val TAG = "PlaylistRefresh"
         /** Bump when the stored catalogue gains data that only a full reload fills in. */
-        const val CATALOGUE_VERSION = 19
+        const val CATALOGUE_VERSION = 20
         const val EPG_MAX_AGE_MS: Long = 6L * 3_600_000L
     }
 }
