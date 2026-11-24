@@ -138,8 +138,13 @@ class PlaylistRefreshUseCase(
         if (repos.isEmpty()) error("No source configured.")
         val primary = repos.first()
 
-        val etag = if (force) null else settings.playlistEtag.first()
-        val lastMod = if (force) null else settings.playlistLastModified.first()
+        // When merging multiple sources, the primary snapshot must always be a full
+        // list. A 304 "not modified" response would otherwise contribute zero channels
+        // while add-ons contribute thousands — replaceAll() would then wipe the M3U/Xtream
+        // catalogue. The default M3U is small, so re-fetching it is cheap.
+        val fetchPrimaryFresh = force || repos.size > 1
+        val etag = if (fetchPrimaryFresh) null else settings.playlistEtag.first()
+        val lastMod = if (fetchPrimaryFresh) null else settings.playlistLastModified.first()
         val snapshots = repos.map { repo ->
             if (repo === primary) repo.fetch(etag, lastMod) { p -> _progress.value = p }
             else repo.fetch(null, null) { p -> _progress.value = p }
@@ -195,7 +200,7 @@ class PlaylistRefreshUseCase(
     companion object {
         private const val TAG = "PlaylistRefresh"
         /** Bump when the stored catalogue gains data that only a full reload fills in. */
-        const val CATALOGUE_VERSION = 18
+        const val CATALOGUE_VERSION = 19
         const val EPG_MAX_AGE_MS: Long = 6L * 3_600_000L
     }
 }
