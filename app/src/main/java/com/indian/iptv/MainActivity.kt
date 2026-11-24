@@ -160,9 +160,34 @@ class MainActivity : ComponentActivity() {
                 description = null,
                 releaseInfo = null,
             )
-            val best = app.addonStreamResolver.resolve(
+            var best = app.addonStreamResolver.resolve(
                 addon, ref.sourceIndex, ref.type, meta, force = false,
             ).firstOrNull()
+            if (best == null) {
+                // Some TV networks reject the tiny Range-based probe even though ExoPlayer
+                // can play the stream normally. Fall back to the highest-labelled direct
+                // URL rather than leaving a search result unplayable. Dead links stay out.
+                val dead = app.addonStreamResolver.deadUrls()
+                val direct = runCatching { addon.streams(meta.type, meta.id) }
+                    .getOrDefault(emptyList())
+                    .filter { it.url !in dead }
+                    .maxByOrNull {
+                        com.indian.iptv.data.addon.AddonStreamResolver.qualityOf(it.label, it.url).first
+                    }
+                if (direct != null) {
+                    val (rank, label) = com.indian.iptv.data.addon.AddonStreamResolver.qualityOf(
+                        direct.label, direct.url,
+                    )
+                    best = com.indian.iptv.data.addon.ResolvedStream(
+                        url = direct.url,
+                        headers = direct.headers,
+                        qualityLabel = label,
+                        qualityRank = rank,
+                        latencyMs = -1L,
+                    )
+                }
+            }
+            android.util.Log.i(TAG, "addon play ${channel.name}: best=${best?.url?.take(120)}")
             if (best == null) {
                 withContext(kotlinx.coroutines.Dispatchers.Main) {
                     android.widget.Toast.makeText(
