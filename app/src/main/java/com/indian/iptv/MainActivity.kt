@@ -101,7 +101,7 @@ class MainActivity : ComponentActivity() {
         // Add-on rows are imported as metadata first. If this one has no verified stream
         // yet, resolve the best working direct link on demand and play it immediately.
         if (channel.id.startsWith("addon:") && channel.streamUrl == null) {
-            resolveAndPlayAddon(channel, resumeMs)
+            resolveAndPlayAddon(channel)
             return
         }
         val intent = Intent(this, PlayerActivity::class.java).apply {
@@ -143,7 +143,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Resolve and play the best working stream for a metadata-only add-on row. */
-    private fun resolveAndPlayAddon(channel: Channel, resumeMs: Long = 0L) {
+    private fun resolveAndPlayAddon(channel: Channel) {
         val ref = com.indian.iptv.data.addon.AddonStreamResolver.parseChannelId(channel.id) ?: return
         lifecycleScope.launch {
             val app = IptvApp.get()
