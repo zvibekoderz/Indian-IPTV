@@ -52,8 +52,24 @@ class AddonBootResolver(
         withContext(Dispatchers.IO) {
             val urls = settings.addonUrls.first()
             if (urls.isEmpty()) return@withContext
-            val rows = runCatching { dao.addonChannels() }.getOrDefault(emptyList())
-            if (rows.isEmpty()) return@withContext
+            val allRows = runCatching { dao.addonChannels() }.getOrDefault(emptyList())
+            if (allRows.isEmpty()) return@withContext
+
+            // A single add-on can publish >10k channels. Resolve them progressively so
+            // the pass stays bounded; favourites and Udaya/Kannada rows go first. The
+            // remaining rows keep their metadata and are resolved on later passes or
+            // on demand when the user plays them.
+            val favIds = runCatching { dao.observeFavoriteIds(app.activeProfileId.value).first() }
+                .getOrDefault(emptyList()).toSet()
+            val rows = allRows.sortedWith(
+                compareByDescending<com.indian.iptv.data.db.ChannelEntity> { it.id in favIds }
+                    .thenByDescending { PRIORITY_TERMS.any { t -> it.name.contains(t, true) } }
+                    .thenByDescending {
+                        AddonStreamCache.best(
+                            AddonStreamCache.keyForChannelId(it.id).orEmpty(),
+                        ) == null
+                    },
+            ).take(MAX_PER_PASS)
 
             _state.value = AddonResolutionState(running = true, total = rows.size)
             val dead = resolver.deadUrls()
@@ -115,5 +131,7 @@ class AddonBootResolver(
 
     companion object {
         private const val TAG = "AddonBootResolver"
+        private const val MAX_PER_PASS = 400
+        private val PRIORITY_TERMS = listOf("udya", "udaya", "kannada", "jio")
     }
 }

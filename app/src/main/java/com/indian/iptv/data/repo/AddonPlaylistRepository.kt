@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import com.indian.iptv.data.Channel
 import com.indian.iptv.data.ContentType
+import com.indian.iptv.data.addon.AddonStreamCache
 import com.indian.iptv.data.addon.AddonStreamResolver
 import com.indian.iptv.data.addon.StremioAddon
 import com.indian.iptv.data.db.ChannelDao
@@ -68,13 +69,12 @@ class AddonPlaylistRepository(
 
                 metas.forEach metas@{ meta ->
                     val id = "addon:$index:${contentType.name}:${meta.id}"
-                    val working = resolver.resolve(addon, index, contentType.name, meta, force = false, dead = dead)
-                    val best = working.firstOrNull()
-                    // Live channels without a verified stream are kept as metadata-only rows
-                    // so they can be upgraded by the boot resolver; movies with no working
-                    // direct link are skipped entirely (nothing playable to show).
-                    if (best == null && contentType == ContentType.MOVIE) return@metas
-
+                    // Import the metadata immediately — a 10k+ live catalogue cannot wait
+                    // for thousands of stream probes. The last-known best link (if any) is
+                    // reused; otherwise the row is metadata-only until the background
+                    // resolver or an on-demand click fills in a verified stream.
+                    val key = AddonStreamCache.key(index, contentType.name, meta.id)
+                    val best = AddonStreamCache.get(key)?.firstOrNull { it.url !in dead }
                     channels += Channel(
                         id = id,
                         name = meta.name,

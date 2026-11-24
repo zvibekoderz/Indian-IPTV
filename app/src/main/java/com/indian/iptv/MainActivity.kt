@@ -28,6 +28,7 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.indian.iptv.data.Channel
 import com.indian.iptv.R
 import com.indian.iptv.data.ContentType
@@ -97,6 +98,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openPlayer(channel: Channel, all: List<Channel>, resumeMs: Long) {
+        // Add-on rows are imported as metadata first. If this one has no verified stream
+        // yet, resolve the best working direct link on demand and play it immediately.
+        if (channel.id.startsWith("addon:") && channel.streamUrl == null) {
+            resolveAndPlayAddon(channel, resumeMs)
+            return
+        }
         val intent = Intent(this, PlayerActivity::class.java).apply {
             putExtra(PlayerActivity.EXTRA_CHANNEL_ID, channel.id)
             // Tens of thousands of ids blow the 1 MB binder limit; let the player query instead.
@@ -111,8 +118,13 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Play a direct stream URL resolved from a Stremio-compatible add-on. */
-    private fun openAddonStream(url: String, title: String, headers: Map<String, String>) {
-        val id = "addon:${url.hashCode()}"
+    private fun openAddonStream(
+        url: String,
+        title: String,
+        headers: Map<String, String>,
+        channelId: String? = null,
+    ) {
+        val id = channelId ?: "addon:${url.hashCode()}"
         val userAgent = headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value
         val referrer = headers.entries.firstOrNull {
             it.key.equals("Referer", true) || it.key.equals("Referrer", true)
@@ -128,6 +140,41 @@ class MainActivity : ComponentActivity() {
                 putExtra(PlayerActivity.EXTRA_ADHOC_REFERRERS, arrayOf(referrer))
             },
         )
+    }
+
+    /** Resolve and play the best working stream for a metadata-only add-on row. */
+    private fun resolveAndPlayAddon(channel: Channel, resumeMs: Long = 0L) {
+        val ref = com.indian.iptv.data.addon.AddonStreamResolver.parseChannelId(channel.id) ?: return
+        lifecycleScope.launch {
+            val app = IptvApp.get()
+            val urls = app.settings.addonUrls.first()
+            val addon = urls.getOrNull(ref.sourceIndex)
+                ?.let { com.indian.iptv.data.addon.StremioAddon.create(it) }
+            if (addon == null) return@launch
+            val meta = com.indian.iptv.data.addon.StremioAddon.Meta(
+                id = ref.metaId,
+                type = ref.type.lowercase(),
+                name = channel.name,
+                poster = channel.logoUrl,
+                background = null,
+                description = null,
+                releaseInfo = null,
+            )
+            val best = app.addonStreamResolver.resolve(
+                addon, ref.sourceIndex, ref.type, meta, force = false,
+            ).firstOrNull()
+            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                if (best == null) {
+                    android.widget.Toast.makeText(
+                        this@MainActivity, "No working direct stream found for ${channel.name}",
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                    return@withContext
+                }
+                app.database.channelDao().updateStream(channel.id, best.url, best.userAgent, best.referrer)
+                openAddonStream(best.url, channel.name, best.headers, channel.id)
+            }
+        }
     }
 
     private fun openLiveChannel(channelId: String) {
@@ -164,6 +211,10 @@ class MainActivity : ComponentActivity() {
      * routing ad-hoc extras for episodes (not in Room) vs. normal extras for movies.
      */
     private fun onPlayDirect(channel: Channel) {
+        if (channel.id.startsWith("addon:") && channel.streamUrl == null) {
+            resolveAndPlayAddon(channel)
+            return
+        }
         lifecycleScope.launch {
             val app = IptvApp.get()
             val dao = app.database.channelDao()
