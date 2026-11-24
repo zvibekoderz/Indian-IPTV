@@ -1622,6 +1622,7 @@ private fun HeroCarousel(
                 progressFraction = progressById[channel.id],
                 focusRequester = focusRequester,
                 hoverChannel = hoverChannel,
+                heroCanFocus = isAtTop(),
                 trailersEnabled = trailersEnabled,
                 onPrev = if (heroes.size > 1) ({ step(-1) }) else null,
                 onNext = if (heroes.size > 1) ({ step(+1) }) else null,
@@ -1671,6 +1672,7 @@ private fun HeroBanner(
     progressFraction: Float?,
     focusRequester: FocusRequester? = null,
     hoverChannel: Channel? = null,
+    heroCanFocus: Boolean = true,
     trailersEnabled: Boolean = true,
     onPrev: (() -> Unit)? = null,
     onNext: (() -> Unit)? = null,
@@ -1691,6 +1693,7 @@ private fun HeroBanner(
             isLastWatched = isLastWatched,
             nowPlaying = nowPlaying,
             focusRequester = activeFocus,
+            heroCanFocus = heroCanFocus,
             onPlay = onPlay,
         )
         return
@@ -1924,6 +1927,7 @@ private fun HeroBanner(
                     onClick = onPlay,
                     modifier = Modifier
                         .focusRequester(activeFocus)
+                        .focusProperties { canFocus = heroCanFocus }
                         .onFocusChanged {
                             playFocused = it.isFocused
                             if (it.isFocused) focusedButton = 0
@@ -1946,7 +1950,9 @@ private fun HeroBanner(
                     Spacer(Modifier.width(12.dp))
                     Button(
                         onClick = onMoreInfo,
-                        modifier = Modifier.onFocusChanged { if (it.isFocused) focusedButton = 1 },
+                        modifier = Modifier
+                            .focusProperties { canFocus = heroCanFocus }
+                            .onFocusChanged { if (it.isFocused) focusedButton = 1 },
                         colors = androidx.tv.material3.ButtonDefaults.colors(
                             containerColor = IptvPalette.SurfaceElevated.copy(alpha = 0.65f),
                             contentColor = IptvPalette.TextPrimary,
@@ -1970,7 +1976,9 @@ private fun HeroBanner(
                     Spacer(Modifier.width(12.dp))
                     Button(
                         onClick = { trailerMuted = !trailerMuted },
-                        modifier = Modifier.onFocusChanged { if (it.isFocused) focusedButton = 2 },
+                        modifier = Modifier
+                            .focusProperties { canFocus = heroCanFocus }
+                            .onFocusChanged { if (it.isFocused) focusedButton = 2 },
                         colors = androidx.tv.material3.ButtonDefaults.colors(
                             containerColor = IptvPalette.SurfaceElevated.copy(alpha = 0.65f),
                             contentColor = IptvPalette.TextPrimary,
@@ -3038,6 +3046,7 @@ private fun CompactTvHero(
     isLastWatched: Boolean,
     nowPlaying: String?,
     focusRequester: FocusRequester,
+    heroCanFocus: Boolean = true,
     onPlay: () -> Unit,
 ) {
     var nextTitle by remember(channel.id) { mutableStateOf<String?>(null) }
@@ -3124,6 +3133,7 @@ private fun CompactTvHero(
             onClick = onPlay,
             modifier = Modifier
                 .focusRequester(focusRequester)
+                .focusProperties { canFocus = heroCanFocus }
                 .onFocusChanged { playFocused = it.isFocused }
                 .tvFocus(playFocused, RoundedCornerShape(999.dp), FocusStyle.ChipScale),
             colors = heroButtonColors(),

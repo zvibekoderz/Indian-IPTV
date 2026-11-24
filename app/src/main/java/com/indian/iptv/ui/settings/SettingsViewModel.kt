@@ -151,19 +151,36 @@ class SettingsViewModel : ViewModel() {
 
     private fun applyPhoneSubmission(sub: PhoneSetupServer.Submission) {
         PhoneSetupServer.consume()
-        _state.update {
-            if (sub.type.equals("m3u", ignoreCase = true)) {
-                it.copy(type = SourceType.M3u, m3uUrls = listOf(sub.m3uUrl), testResult = null, validationError = null, filledFromPhone = true)
+        _state.update { state ->
+            val base = if (sub.type.equals("m3u", ignoreCase = true)) {
+                state.copy(type = SourceType.M3u, m3uUrls = listOf(sub.m3uUrl))
             } else {
-                it.copy(
+                state.copy(
                     type = SourceType.Xtream,
                     host = sub.host,
                     username = sub.username,
                     password = sub.password,
-                    testResult = null,
-                    validationError = null,
-                    filledFromPhone = true,
                 )
+            }
+            // Add-on URLs are independent of the primary source type and can be sent
+            // alongside either M3U or Xtream from the same QR form.
+            if (sub.addonUrls.isNotEmpty()) {
+                base.copy(
+                    addonUrls = sub.addonUrls,
+                    addonsEnabled = true,
+                    filledFromPhone = true,
+                    validationError = null,
+                    testResult = null,
+                )
+            } else {
+                base.copy(filledFromPhone = true, validationError = null, testResult = null)
+            }
+        }
+        val addonUrls = sub.addonUrls
+        if (addonUrls.isNotEmpty()) {
+            viewModelScope.launch {
+                app.settings.setAddonUrls(addonUrls)
+                app.settings.setAddonsEnabled(true)
             }
         }
     }

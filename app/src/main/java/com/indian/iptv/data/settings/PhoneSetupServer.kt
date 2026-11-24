@@ -28,6 +28,7 @@ object PhoneSetupServer {
         val host: String,
         val username: String,
         val password: String,
+        val addonUrls: List<String> = emptyList(),
     )
 
     private val _submission = MutableStateFlow<Submission?>(null)
@@ -128,6 +129,11 @@ object PhoneSetupServer {
                     host = fields["host"].orEmpty().trim(),
                     username = fields["username"].orEmpty().trim(),
                     password = fields["password"].orEmpty(),
+                    addonUrls = listOfNotNull(
+                        fields["addon"]?.takeIf { it.isNotBlank() },
+                        fields["addon2"]?.takeIf { it.isNotBlank() },
+                        fields["addon3"]?.takeIf { it.isNotBlank() },
+                    ).map { it.trim() },
                 )
                 respond("200 OK", page("<h2>Ontvangen</h2><p>Kijk op je tv: de gegevens staan nu in Instellingen. Test de verbinding en sla op.</p>"))
             }
@@ -181,6 +187,9 @@ object PhoneSetupServer {
           <label for="username">Gebruikersnaam</label><input type="text" id="username" name="username" autocapitalize="off">
           <label for="password">Wachtwoord</label><input type="password" id="password" name="password">
           <label for="m3u">M3U-URL</label><input type="url" id="m3u" name="m3u" placeholder="http://…/playlist.m3u">
+          <label for="addon">Add-on manifest URL</label><input type="url" id="addon" name="addon" placeholder="http://192.168.1.5:8080/manifest.json">
+          <label for="addon2">Add-on URL 2 (optional)</label><input type="url" id="addon2" name="addon2" placeholder="https://…/manifest.json">
+          <label for="addon3">Add-on URL 3 (optional)</label><input type="url" id="addon3" name="addon3" placeholder="https://…/manifest.json">
           <button type="submit">Naar de tv sturen</button>
         </form>
     """.trimIndent()

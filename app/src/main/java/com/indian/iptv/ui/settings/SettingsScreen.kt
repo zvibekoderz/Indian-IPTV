@@ -452,6 +452,9 @@ private fun AddonsSection(state: SettingsUiState, vm: SettingsViewModel) {
     if (state.deadLinks.isNotEmpty()) {
         Button(onClick = vm::clearDeadLinks) { Text("Clear all dead links") }
     }
+
+    Spacer(Modifier.height(8.dp))
+    PhoneSetupPanel()
 }
 
 @Composable
