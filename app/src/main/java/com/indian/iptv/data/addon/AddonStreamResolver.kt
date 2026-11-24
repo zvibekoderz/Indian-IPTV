@@ -40,10 +40,10 @@ class AddonStreamResolver(private val dao: ChannelDao) {
         force: Boolean = false,
         dead: Set<String>? = null,
     ): List<ResolvedStream> = withContext(Dispatchers.IO) {
-        val dead = dead ?: deadUrls()
+        val combinedDead = dead ?: deadUrls()
         val key = AddonStreamCache.key(sourceIndex, type, meta.id)
         if (!force) {
-            val cached = AddonStreamCache.get(key)?.filter { it.url !in dead }
+            val cached = AddonStreamCache.get(key)?.filter { it.url !in combinedDead }
             if (!cached.isNullOrEmpty()) return@withContext cached
         }
 
@@ -53,7 +53,7 @@ class AddonStreamResolver(private val dao: ChannelDao) {
             .onFailure { Log.w(TAG, "stream request failed for ${meta.id}: ${it.message}") }
             .getOrNull()
             .orEmpty()
-            .filter { it.url !in dead }
+            .filter { it.url !in combinedDead }
 
         if (streams.isEmpty()) {
             // Only trust the cache if the fresh lookup couldn't produce candidates.
