@@ -391,6 +391,9 @@ interface ChannelDao {
     @Query("SELECT url FROM addon_dead_streams")
     suspend fun deadAddonUrls(): List<String>
 
+    @Query("SELECT * FROM channels WHERE id LIKE 'addon:%' AND type = :type ORDER BY sortIndex ASC LIMIT :limit")
+    fun observeAddonChannels(type: String, limit: Int = 20_000): Flow<List<ChannelEntity>>
+
     @Query("SELECT url FROM addon_dead_streams")
     fun observeDeadAddonUrls(): Flow<List<String>>
 

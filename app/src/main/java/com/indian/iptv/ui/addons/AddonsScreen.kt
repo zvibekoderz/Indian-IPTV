@@ -59,6 +59,7 @@ import com.indian.iptv.data.addon.AddonStreamCache
 import com.indian.iptv.data.addon.AddonStreamResolver
 import com.indian.iptv.data.addon.ResolvedStream
 import com.indian.iptv.data.addon.StremioAddon
+import com.indian.iptv.data.db.toDomain
 import com.indian.iptv.ui.channels.PosterCard
 import com.indian.iptv.ui.theme.IptvPalette
 import com.indian.iptv.ui.theme.tvFocus
@@ -83,6 +84,15 @@ fun AddonsScreen(
     val urls by app.settings.addonUrls.collectAsState(initial = emptyList())
     val favouriteIds by app.database.channelDao().observeFavoriteIds(app.activeProfileId.value)
         .collectAsState(initial = emptyList())
+    val tvRows by app.database.channelDao().observeAddonChannels(ContentType.TV.name, 20_000)
+        .collectAsState(initial = emptyList())
+    val movieRows by app.database.channelDao().observeAddonChannels(ContentType.MOVIE.name, 5_000)
+        .collectAsState(initial = emptyList())
+    val deadUrls by app.database.channelDao().observeDeadAddonUrls()
+        .collectAsState(initial = emptyList())
+    val roomChannels = remember(tvRows, movieRows) {
+        (tvRows + movieRows).map { it.toDomain() }
+    }
 
     var activeIndex by remember { mutableIntStateOf(0) }
     var manifests by remember { mutableStateOf<Map<Int, StremioAddon.Manifest>>(emptyMap()) }
@@ -138,11 +148,19 @@ fun AddonsScreen(
 
     // Build lightweight cards from the last-known best stream cache. Resolution is
     // done on demand (OK or long-press) so browsing stays instant.
-    LaunchedEffect(metas, selectedCatalog) {
+    LaunchedEffect(metas, selectedCatalog, roomChannels, deadUrls) {
         val index = selectedCatalog?.first ?: 0
         val type = when (selectedCatalog?.second?.type?.lowercase()) {
             "tv", "live" -> ContentType.TV
             else -> ContentType.MOVIE
+        }
+        // Network catalog fetch can fail or be slow. The Room cache is the reliable
+        // source of truth: show every imported add-on channel even if REST is down.
+        if (metas.isEmpty()) {
+            channels = roomChannels
+                .filterNot { it.streamUrl in deadUrls }
+                .filter { selectedCatalog == null || it.groupTitle == selectedCatalog?.second?.name }
+            return@LaunchedEffect
         }
         channels = metas.map { meta ->
             val key = AddonStreamCache.key(index, type.name, meta.id)
@@ -162,8 +180,12 @@ fun AddonsScreen(
     }
 
     val visible = channels
+        .filterNot { it.streamUrl in deadUrls }
         .filter { !favouritesOnly || it.id in favouriteIds }
-        .filter { query.isBlank() || it.name.contains(query.trim(), ignoreCase = true) }
+        .filter {
+            query.isBlank() || it.name.contains(query.trim(), ignoreCase = true) ||
+                it.groupTitle?.contains(query.trim(), ignoreCase = true) == true
+        }
 
     fun streamHeaders(channel: Channel, best: ResolvedStream): Map<String, String> = buildMap {
         best.userAgent?.let { put("User-Agent", it) }
