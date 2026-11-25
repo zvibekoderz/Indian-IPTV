@@ -53,14 +53,17 @@ class MainActivity : Activity() {
 
                 val unpacked = File(pluginDir, "livxow").apply { mkdirs() }
                 unzip(file, unpacked)
+                File(unpacked, "oat").deleteRecursively()
                 val manifest = JSONObject(File(unpacked, "manifest.json").readText())
                 val className = manifest.getString("pluginClassName")
 
                 status.post { status.text = "Loading $className…" }
 
+                val optimized = File(codeCacheDir, "dex").apply { mkdirs() }
+                optimized.listFiles()?.forEach { it.deleteRecursively() }
                 val loader = dalvik.system.DexClassLoader(
                     File(unpacked, "classes.dex").absolutePath,
-                    File(codeCacheDir, "dex").apply { mkdirs() }.absolutePath,
+                    optimized.absolutePath,
                     null,
                     classLoader,
                 )
