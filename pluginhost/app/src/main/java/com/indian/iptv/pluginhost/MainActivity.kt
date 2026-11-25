@@ -59,7 +59,7 @@ class MainActivity : Activity() {
                 status.post { status.text = "Loading $className…" }
 
                 val loader = dalvik.system.DexClassLoader(
-                    file.absolutePath,
+                    File(unpacked, "classes.dex").absolutePath,
                     File(codeCacheDir, "dex").apply { mkdirs() }.absolutePath,
                     null,
                     classLoader,
