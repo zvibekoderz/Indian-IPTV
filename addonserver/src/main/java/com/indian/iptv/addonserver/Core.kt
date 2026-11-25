@@ -114,6 +114,8 @@ internal class Aggregator {
 
     @Volatile private var cached: Data? = null
     @Volatile private var lastLoadAt = 0L
+    /** Short aggregated id -> original add-on meta id, so catalog JSON stays small. */
+    private val idMap = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     data class Meta(val id: String, val name: String, val poster: String?, val type: String)
     data class Data(
@@ -153,7 +155,8 @@ internal class Aggregator {
                     val meta = metas.optJSONObject(j) ?: continue
                     val originalId = meta.optString("id")
                     if (originalId.isBlank()) continue
-                    val id = "s$index:$originalId"
+                    val id = "s$index:${originalId.hashCode().toUInt().toString(16)}"
+                    idMap[id] = originalId
                     val name = meta.optString("name").ifBlank { originalId }
                     // When CloudStream repos are configured, keep only catalogs that look
                     // related to the installed plugin set. Without repos, keep everything.
@@ -182,7 +185,8 @@ internal class Aggregator {
         val separator = prefixedId.indexOf(':')
         if (!prefixedId.startsWith("s") || separator < 1) return result
         val index = prefixedId.substring(1, separator).toIntOrNull() ?: return result
-        val originalId = prefixedId.substring(separator + 1)
+        // Legacy ids (s<index>:<originalId>) still resolve after an upgrade.
+        val originalId = idMap[prefixedId] ?: prefixedId.substring(separator + 1)
         val base = normalize(dataStaticUpstream(index)) ?: return result
         val json = Net.getJson("$base/stream/$type/${encode(originalId)}.json") ?: return result
         val streams = json.optJSONArray("streams") ?: return result
