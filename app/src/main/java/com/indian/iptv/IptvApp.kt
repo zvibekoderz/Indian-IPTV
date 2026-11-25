@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import com.indian.iptv.data.addon.AddonBootResolver
@@ -24,6 +25,7 @@ import com.indian.iptv.data.reminders.Reminders
 import com.indian.iptv.data.repo.EpgRefreshWorker
 import com.indian.iptv.data.repo.PlaylistRefreshScheduler
 import com.indian.iptv.data.repo.PlaylistRefreshUseCase
+import com.indian.iptv.data.settings.DEFAULT_ADDON_URLS
 import com.indian.iptv.data.settings.SettingsStore
 import com.indian.iptv.data.tmdb.TmdbHeroPreloader
 import com.indian.iptv.data.tmdb.TmdbMovieDetailsRepository
@@ -99,6 +101,16 @@ class IptvApp : Application(), ImageLoaderFactory {
         AddonStreamCache.init(this)
         // Bundled mitthu786/tvepg name -> id/logo map used to enrich M3U channels.
         TvepgCatalogue.load(this)
+
+        // Restore the full add-on source list (the QR form can overwrite it with only
+        // the last submitted URLs). Runs once per install.
+        appScope.launch {
+            if (!settings.addonUrlsMigrated.first()) {
+                settings.setAddonUrls(DEFAULT_ADDON_URLS)
+                settings.setAddonsEnabled(true)
+                settings.markAddonUrlsMigrated()
+            }
+        }
 
         // Apply the nightly-refresh schedule on every app start AND reapply whenever the
         // user toggles the switch or changes the hour. Distinct-until-changed means that
