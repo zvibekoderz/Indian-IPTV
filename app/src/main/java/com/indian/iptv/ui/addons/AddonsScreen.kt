@@ -352,7 +352,7 @@ fun AddonsScreen(
             error?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = IptvPalette.Accent)
             }
-            if (manifests.isEmpty() && !loading) {
+            if (manifests.isEmpty() && channels.isEmpty()) {
                 Text(
                     "No add-on sources configured. Add a manifest URL in Settings → Add-ons.",
                     style = MaterialTheme.typography.bodyMedium,
