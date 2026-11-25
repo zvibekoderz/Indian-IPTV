@@ -118,11 +118,16 @@ internal class Aggregator {
     private val idMap = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     data class Meta(val id: String, val name: String, val poster: String?, val type: String)
+    data class CatInfo(val type: String, val name: String)
     data class Data(
         val tv: List<Meta>,
         val movies: List<Meta>,
         val upstreams: List<String>,
         val pluginNames: Set<String>,
+        /** Per-upstream catalog id -> its metas, so each becomes its own rail. */
+        val catalogs: Map<String, List<Meta>>,
+        /** Per-upstream catalog id -> display label. */
+        val labels: Map<String, CatInfo>,
         val builtAt: Long,
     )
 
@@ -135,6 +140,8 @@ internal class Aggregator {
         val plugins = Prefs.repos(context).flatMap(::pluginNamesViaRepo).toSet()
         val tv = LinkedHashMap<String, Meta>()
         val movies = LinkedHashMap<String, Meta>()
+        val perCatalog = LinkedHashMap<String, List<Meta>>()
+        val labels = LinkedHashMap<String, CatInfo>()
 
         upstreams.forEachIndexed { index, base ->
             val normalized = normalize(base) ?: return@forEachIndexed
@@ -148,7 +155,11 @@ internal class Aggregator {
                     else -> continue
                 }
                 val target = if (type == "tv") tv else movies
+                val catMetas = LinkedHashMap<String, Meta>()
                 val catalogId = catalog.optString("id")
+                val exposedId = "s$index:$catalogId"
+                val catalogName = catalog.optString("name").ifBlank { catalogId }
+                labels[exposedId] = CatInfo(type, "s$index · $catalogName")
                 val json = Net.getJson("$normalized/catalog/$type/${encode(catalogId)}.json") ?: continue
                 val metas = json.optJSONArray("metas") ?: continue
                 for (j in 0 until metas.length()) {
@@ -160,10 +171,13 @@ internal class Aggregator {
                     val name = meta.optString("name").ifBlank { originalId }
                     // When CloudStream repos are configured, keep only catalogs that look
                     // related to the installed plugin set. Without repos, keep everything.
-                    if (plugins.isNotEmpty() && !nameMatches(name, catalog.optString("name"), plugins)) continue
+                    if (plugins.isNotEmpty() && !nameMatches(name, catalogName, plugins)) continue
                     val poster = meta.optString("poster").takeIf { it.startsWith("http") }
-                    target.putIfAbsent(id, Meta(id, name, poster, type))
+                    val item = Meta(id, name, poster, type)
+                    target.putIfAbsent(id, item)
+                    catMetas.putIfAbsent(id, item)
                 }
+                perCatalog[exposedId] = catMetas.values.toList()
             }
         }
 
@@ -172,6 +186,8 @@ internal class Aggregator {
             movies = movies.values.toList(),
             upstreams = upstreams,
             pluginNames = plugins,
+            catalogs = perCatalog,
+            labels = labels,
             builtAt = now,
         )
         cached = result

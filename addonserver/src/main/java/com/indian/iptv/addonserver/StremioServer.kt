@@ -83,8 +83,14 @@ internal class StremioServer(private val context: Context) {
 
     private fun manifest(data: Aggregator.Data): JSONObject {
         val catalogs = JSONArray()
-            .put(JSONObject().put("type", "tv").put("id", ALL_TV).put("name", "All Live TV"))
-            .put(JSONObject().put("type", "movie").put("id", ALL_MOVIES).put("name", "All Movies"))
+        data.labels.forEach { (id, info) ->
+            catalogs.put(
+                JSONObject()
+                    .put("type", info.type)
+                    .put("id", id)
+                    .put("name", info.name),
+            )
+        }
         return JSONObject()
             .put("id", "com.indian.iptv.addonserver")
             .put("version", "1.0.0")
@@ -97,10 +103,14 @@ internal class StremioServer(private val context: Context) {
     private fun catalog(data: Aggregator.Data, path: String): JSONObject {
         val clean = path.removePrefix("/catalog/").removeSuffix(".json")
         val parts = clean.split('/')
-        val type = parts.getOrNull(0) ?: "tv"
+        val id = Net.decode(parts.getOrNull(1).orEmpty())
         var query = parts.getOrNull(2).orEmpty()
         if (query.startsWith("search=", true)) query = Net.decode(query.removePrefix("search="))
-        val source = if (type == "movie") data.movies else data.tv
+        val source = data.catalogs[id] ?: when (id) {
+            ALL_TV -> data.tv
+            ALL_MOVIES -> data.movies
+            else -> emptyList()
+        }
         val metas = JSONArray()
         source.filter { query.isBlank() || it.name.contains(query, true) }.forEach { meta ->
             metas.put(
