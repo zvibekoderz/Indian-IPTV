@@ -2,6 +2,7 @@ package com.indian.iptv.data.repo
 
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import com.indian.iptv.data.Channel
@@ -63,9 +64,14 @@ class AddonPlaylistRepository(
                     else -> return@catalogs
                 }
                 catalogCount++
-                val metas = runCatching { addon.catalog(catalog.type, catalog.id) }
-                    .onFailure { Log.w(TAG, "Catalog ${catalog.id} failed: ${it.message}") }
-                    .getOrDefault(emptyList())
+                var metas = emptyList<StremioAddon.Meta>()
+                repeat(CATALOG_ATTEMPTS) { attempt ->
+                    metas = runCatching { addon.catalog(catalog.type, catalog.id) }
+                        .onFailure { Log.w(TAG, "Catalog ${catalog.id} attempt ${attempt + 1} failed: ${it.message}") }
+                        .getOrDefault(emptyList())
+                    if (metas.isNotEmpty()) return@repeat
+                    delay(CATALOG_RETRY_DELAY_MS)
+                }
 
                 metas.forEach metas@{ meta ->
                     val id = "addon:$index:${contentType.name}:${meta.id}"
@@ -113,5 +119,7 @@ class AddonPlaylistRepository(
     companion object {
         private const val TAG = "AddonRepo"
         private val AUTO_FAVOURITE_REGEX = Regex("udya|udaya|kannada")
+        private const val CATALOG_ATTEMPTS = 3
+        private const val CATALOG_RETRY_DELAY_MS = 1_000L
     }
 }
