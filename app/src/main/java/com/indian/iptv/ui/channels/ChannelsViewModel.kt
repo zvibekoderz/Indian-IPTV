@@ -914,10 +914,10 @@ class ChannelsViewModel : ViewModel() {
     }
 
     private fun limitFor(type: ContentType): Int = when (type) {
-        // TV needs to cover favorites management, so give it headroom over the usual ~26k.
-        ContentType.TV -> 40000
-        // Movies/Series only feed the rails (200 items × 60 rails = 12k); cap well above that.
-        ContentType.MOVIE, ContentType.SERIES -> 20000
+        // Home rails show at most MAX_RAILS * MAX_PER_RAIL items. Keep the query bounded;
+        // Categories and search use uncapped queries, so no channel becomes unreachable.
+        ContentType.TV -> 15_000
+        ContentType.MOVIE, ContentType.SERIES -> 8_000
     }
 
     private companion object {
