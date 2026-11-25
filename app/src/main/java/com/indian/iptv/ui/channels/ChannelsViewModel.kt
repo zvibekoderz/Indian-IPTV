@@ -152,8 +152,8 @@ data class ChannelsUiState(
         const val FAVORITES = "Favorites"
         const val CONTINUE_WATCHING = "Continue Watching"
         const val POPULAR_NOW = "Popular Now"
-        const val MAX_PER_RAIL = 200
-        const val MAX_RAILS = 60
+        const val MAX_PER_RAIL = 100_000
+        const val MAX_RAILS = 1_000
     }
 }
 

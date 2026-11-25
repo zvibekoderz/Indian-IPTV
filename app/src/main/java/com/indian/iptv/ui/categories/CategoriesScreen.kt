@@ -139,7 +139,7 @@ fun CategoriesScreen(
                             ContentType.TV -> LogoCard(
                                 channel = channel,
                                 progressFraction = null,
-                                onClick = { if (channel.streamUrl != null) onOpen(channel, playable) },
+                                onClick = { onOpen(channel, playable) },
                             )
                             ContentType.MOVIE, ContentType.SERIES -> PosterCard(
                                 channel = channel,
