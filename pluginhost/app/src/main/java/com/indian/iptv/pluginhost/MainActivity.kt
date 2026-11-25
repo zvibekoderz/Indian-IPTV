@@ -61,8 +61,14 @@ class MainActivity : Activity() {
 
                 val optimized = File(codeCacheDir, "dex").apply { mkdirs() }
                 optimized.listFiles()?.forEach { it.deleteRecursively() }
+                val jar = File(pluginDir, "livxow-plugin.jar")
+                java.util.zip.ZipOutputStream(java.io.FileOutputStream(jar)).use { zip ->
+                    zip.putNextEntry(java.util.zip.ZipEntry("classes.dex"))
+                    File(unpacked, "classes.dex").inputStream().use { it.copyTo(zip) }
+                    zip.closeEntry()
+                }
                 val loader = dalvik.system.DexClassLoader(
-                    File(unpacked, "classes.dex").absolutePath,
+                    jar.absolutePath,
                     optimized.absolutePath,
                     null,
                     classLoader,
