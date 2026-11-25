@@ -44,6 +44,8 @@ internal class StremioServer(private val context: Context) {
         aggregator.data(context, force = true)
     }
 
+    fun repos(context: Context): List<RepoReader.RepoInfo> = aggregator.data(context).repos
+
     fun stop() {
         running = false
         runCatching { socket?.close() }

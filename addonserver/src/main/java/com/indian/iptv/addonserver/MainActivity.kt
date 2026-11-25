@@ -16,6 +16,7 @@ import android.widget.Toast
 class MainActivity : Activity() {
 
     private lateinit var status: TextView
+    private lateinit var repoSummary: TextView
     private lateinit var autoButton: Button
     private lateinit var startButton: Button
     private lateinit var repoList: LinearLayout
@@ -30,8 +31,10 @@ class MainActivity : Activity() {
             setPadding(48, 36, 48, 48)
         }
         status = label("", 20f)
+        repoSummary = label("", 14f)
         root.addView(label("CNC Add-on Server", 28f))
         root.addView(status)
+        root.addView(repoSummary)
 
         root.addView(label("CloudStream repo JSON URLs", 18f))
         val repoInput = input("https://raw.githubusercontent.com/.../CNC.json")
@@ -73,6 +76,10 @@ class MainActivity : Activity() {
 
     private fun render() {
         val running = ServerService.server(this).isRunning
+        val repos = ServerService.server(this).repos(this)
+        repoSummary.text = "Repos (${repos.size}): " +
+            repos.take(6).joinToString(", ") { it.name } +
+            if (repos.size > 6) " …" else ""
         status.text = buildString {
             append("Local URL: ").append(ServerService.localUrl()).append('\n')
             append("LAN URL: ").append(ServerService.serverUrl(this@MainActivity)).append('\n')

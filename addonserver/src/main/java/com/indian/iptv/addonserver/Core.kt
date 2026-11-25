@@ -90,6 +90,23 @@ internal object Net {
 
 /** Reads CloudStream repo JSON files and returns the plugin names they contain. */
 internal object RepoReader {
+    data class RepoInfo(val name: String, val url: String, val pluginCount: Int)
+
+    /** Repos published by the add-on's public /api/repos endpoint. */
+    fun apiRepos(base: String): List<RepoInfo> {
+        val array = Net.getArray("$base/api/repos") ?: return emptyList()
+        return (0 until array.length()).mapNotNull { i ->
+            val obj = array.opt(i) as? JSONObject ?: return@mapNotNull null
+            val url = obj.optString("url")
+            if (!url.startsWith("http")) return@mapNotNull null
+            RepoInfo(
+                name = obj.optString("name").ifBlank { url },
+                url = url,
+                pluginCount = obj.optInt("pluginCount"),
+            )
+        }
+    }
+
     fun pluginNames(repoUrl: String): List<String> {
         val repo = Net.getJson(repoUrl) ?: return emptyList()
         val lists = repo.optJSONArray("pluginLists") ?: return emptyList()
@@ -129,6 +146,8 @@ internal class Aggregator {
         val catalogs: Map<String, List<Meta>>,
         /** Per-upstream catalog id -> display label. */
         val labels: Map<String, CatInfo>,
+        /** CloudStream repos published by the add-on, plus any added manually. */
+        val repos: List<RepoReader.RepoInfo>,
         val builtAt: Long,
     )
 
@@ -138,7 +157,11 @@ internal class Aggregator {
         if (!force && current != null && now - lastLoadAt < CACHE_MS) return current
 
         val upstreams = Prefs.upstreams(context)
-        val plugins = Prefs.repos(context).flatMap(::pluginNamesViaRepo).toSet()
+        val apiRepos = upstreams.firstNotNullOfOrNull { base ->
+            normalize(base)?.let { RepoReader.apiRepos(it).takeIf { list -> list.isNotEmpty() } }
+        }.orEmpty()
+        val manualRepos = Prefs.repos(context).map { RepoReader.RepoInfo(it, it, 0) }
+        val repos = (apiRepos + manualRepos).distinctBy { it.url }
         val tv = LinkedHashMap<String, Meta>()
         val movies = LinkedHashMap<String, Meta>()
         val perCatalog = LinkedHashMap<String, List<Meta>>()
@@ -170,9 +193,6 @@ internal class Aggregator {
                     val id = "s$index:${originalId.hashCode().toUInt().toString(16)}"
                     idMap[id] = originalId
                     val name = meta.optString("name").ifBlank { originalId }
-                    // When CloudStream repos are configured, keep only catalogs that look
-                    // related to the installed plugin set. Without repos, keep everything.
-                    if (plugins.isNotEmpty() && !nameMatches(name, catalogName, plugins)) continue
                     val poster = meta.optString("poster").takeIf { it.startsWith("http") }
                     val item = Meta(id, name, poster, type)
                     target.putIfAbsent(id, item)
@@ -186,9 +206,10 @@ internal class Aggregator {
             tv = tv.values.toList(),
             movies = movies.values.toList(),
             upstreams = upstreams,
-            pluginNames = plugins,
+            pluginNames = emptySet(),
             catalogs = perCatalog,
             labels = labels,
+            repos = repos,
             builtAt = now,
         )
         cached = result
