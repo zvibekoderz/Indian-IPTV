@@ -29,7 +29,7 @@ interface ChannelDao {
     suspend fun allChannels(): List<ChannelEntity>
 
     /** Lightweight projection for the in-memory, accent-insensitive search index. */
-    @Query("SELECT id, name, type FROM channels ORDER BY sortIndex ASC")
+    @Query("SELECT id, name, type, groupTitle FROM channels ORDER BY sortIndex ASC")
     suspend fun searchIndexRows(): List<SearchIndexRow>
 
     @Query("SELECT * FROM channels WHERE id IN (:ids)")
@@ -391,6 +391,9 @@ interface ChannelDao {
     @Query("SELECT url FROM addon_dead_streams")
     suspend fun deadAddonUrls(): List<String>
 
+    @Query("SELECT url FROM addon_dead_streams")
+    fun observeDeadAddonUrls(): Flow<List<String>>
+
     @Query("SELECT * FROM addon_dead_streams ORDER BY checkedAt DESC LIMIT :limit")
     fun observeDeadAddonStreams(limit: Int = 200): Flow<List<AddonDeadStreamEntity>>
 
@@ -408,4 +411,5 @@ data class SearchIndexRow(
     val id: String,
     val name: String,
     val type: String,
+    val groupTitle: String?,
 )

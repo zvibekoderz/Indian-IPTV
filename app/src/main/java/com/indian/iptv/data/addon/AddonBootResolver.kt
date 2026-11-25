@@ -135,7 +135,7 @@ class AddonBootResolver(
 
     companion object {
         private const val TAG = "AddonBootResolver"
-        private const val MAX_PER_PASS = 80
+        private const val MAX_PER_PASS = 40
         private const val RESOLVE_INTERVAL_MS = 6L * 3_600_000L
         private val PRIORITY_TERMS = listOf("udya", "udaya", "kannada", "jio")
     }

@@ -152,8 +152,8 @@ data class ChannelsUiState(
         const val FAVORITES = "Favorites"
         const val CONTINUE_WATCHING = "Continue Watching"
         const val POPULAR_NOW = "Popular Now"
-        const val MAX_PER_RAIL = 100_000
-        const val MAX_RAILS = 1_000
+        const val MAX_PER_RAIL = 200
+        const val MAX_RAILS = 60
     }
 }
 
@@ -343,6 +343,9 @@ class ChannelsViewModel : ViewModel() {
     private val _hoverChannel = MutableStateFlow<Channel?>(null)
     val hoverChannel: StateFlow<Channel?> = _hoverChannel.asStateFlow()
 
+    /** URLs confirmed dead; add-on rows using one are hidden from lists and search. */
+    @Volatile private var deadStreamUrls: Set<String> = emptySet()
+
     /**
      * Debounced hover for the hero backdrop swap: fast D-pad scrolling passes over many
      * cards, and only the one the user settles on should repaint the hero.
@@ -363,6 +366,7 @@ class ChannelsViewModel : ViewModel() {
         val ids: Array<String>,
         val names: Array<String>,
         val types: Array<String>,
+        val groups: Array<String>,
     )
 
     private val searchIndexFlow: StateFlow<SearchIndex?> = dao.observeChannelCount()
@@ -374,6 +378,7 @@ class ChannelsViewModel : ViewModel() {
                 ids = Array(rows.size) { i -> rows[i].id },
                 names = Array(rows.size) { i -> normalizeForSearch(rows[i].name) },
                 types = Array(rows.size) { i -> rows[i].type },
+                groups = Array(rows.size) { i -> normalizeForSearch(rows[i].groupTitle.orEmpty()) },
             )
         }
         .flowOn(Dispatchers.IO)
@@ -382,20 +387,18 @@ class ChannelsViewModel : ViewModel() {
     private suspend fun runSearch(index: SearchIndex, query: String): List<Channel> {
         val needle = normalizeForSearch(query)
         if (needle.isEmpty()) return emptyList()
-        val perType = HashMap<String, Int>()
         val hits = ArrayList<String>()
         for (i in index.ids.indices) {
-            if (!index.names[i].contains(needle)) continue
-            val count = perType[index.types[i]] ?: 0
-            if (count >= SEARCH_LIMIT_PER_TYPE) continue
-            perType[index.types[i]] = count + 1
+            if (!index.names[i].contains(needle) && !index.groups[i].contains(needle)) continue
             hits += index.ids[i]
+            if (hits.size >= SEARCH_LIMIT_PER_TYPE) break
         }
         if (hits.isEmpty()) return emptyList()
         val byId = hits.chunked(500)
             .flatMap { dao.getChannelsByIds(it) }
             .associateBy { it.id }
         return AdultContent.filterChannels(hits.mapNotNull { byId[it]?.toDomain() }, app.kidsMode.value) { it.groupTitle }
+            .filterNot { it.id.startsWith("addon:") && it.streamUrl in deadStreamUrls }
     }
 
     fun rememberFocus(type: ContentType, memory: RailFocusMemory?) {
@@ -417,8 +420,15 @@ class ChannelsViewModel : ViewModel() {
     // all three warm; memory cost is bounded by `limitFor` plus the country filter.
     private val channelsByType: Map<ContentType, StateFlow<List<Channel>>> =
         ContentType.values().associateWith { type ->
-            combine(dao.observeChannelsByType(type.name, limitFor(type)), app.kidsMode) { rows, kids ->
-                AdultContent.filterChannels(rows.map { it.toDomain() }.distinctBy { it.id }, kids) { it.groupTitle }
+            combine(
+                dao.observeChannelsByType(type.name, limitFor(type)),
+                app.kidsMode,
+                dao.observeDeadAddonUrls(),
+            ) { rows, kids, dead ->
+                deadStreamUrls = dead.toHashSet()
+                AdultContent.filterChannels(rows.map { it.toDomain() }, kids) { it.groupTitle }
+                    .filterNot { it.id.startsWith("addon:") && it.streamUrl in deadStreamUrls }
+                    .distinctBy { it.id }
             }
                 .flowOn(Dispatchers.Default)
                 .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -911,7 +921,7 @@ class ChannelsViewModel : ViewModel() {
     }
 
     private companion object {
-        const val SEARCH_LIMIT_PER_TYPE = 60
+        const val SEARCH_LIMIT_PER_TYPE = 5_000
         const val HOVER_SETTLE_MS = 350L
         const val CONTINUE_LIMIT = 20
         const val CONTINUE_FINISH_THRESHOLD_MS = 30_000L

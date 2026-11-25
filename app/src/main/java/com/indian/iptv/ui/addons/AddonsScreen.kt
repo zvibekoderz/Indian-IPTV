@@ -194,9 +194,28 @@ fun AddonsScreen(
                 id = ref.metaId, type = ref.type.lowercase(), name = channel.name,
                 poster = channel.logoUrl, background = null, description = null, releaseInfo = null,
             )
-            val best = app.addonStreamResolver.resolve(
+            var best = app.addonStreamResolver.resolve(
                 addon, ref.sourceIndex, ref.type, meta, force = false,
             ).firstOrNull()
+            if (best == null) {
+                val dead = app.addonStreamResolver.deadUrls()
+                val direct = runCatching { addon.streams(meta.type, meta.id) }
+                    .getOrDefault(emptyList())
+                    .filter { it.url.startsWith("http") && it.url !in dead }
+                    .maxByOrNull {
+                        AddonStreamResolver.qualityOf(it.label, it.url).first
+                    }
+                if (direct != null) {
+                    val (rank, label) = AddonStreamResolver.qualityOf(direct.label, direct.url)
+                    best = ResolvedStream(
+                        url = direct.url,
+                        headers = direct.headers,
+                        qualityLabel = label,
+                        qualityRank = rank,
+                        latencyMs = -1L,
+                    )
+                }
+            }
             loading = false
             if (best != null) {
                 onPlay(best.url, channel.name, streamHeaders(channel, best))
