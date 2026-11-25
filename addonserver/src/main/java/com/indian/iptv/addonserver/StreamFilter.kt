@@ -23,6 +23,8 @@ internal object StreamFilter {
     private const val TTL_MS = 30L * 60 * 1000
     private const val MAX_CANDIDATES = 6
     private const val THREADS = 4
+    private const val NETWORK_FAILURE = -1
+    private const val BAD_PLAYLIST = -2
 
     private data class Cached(val at: Long, val streams: JSONArray)
     private val cache = ConcurrentHashMap<String, Cached>()
@@ -69,10 +71,17 @@ internal object StreamFilter {
             val futures = candidates.take(MAX_CANDIDATES).map { candidate ->
                 pool.submit {
                     val started = System.currentTimeMillis()
-                    val ok = probe(candidate.url, candidate.headers)
+                    val code = probe(candidate.url, candidate.headers)
                     val latency = System.currentTimeMillis() - started
-                    if (ok) results[candidate.url] = candidate.rank to latency
-                    else markDead(context, candidate.url)
+                    if (code in 200..399 || code == 416) {
+                        results[candidate.url] = candidate.rank to latency
+                    } else if (code == BAD_PLAYLIST || code == 403 || code == 404 ||
+                        code == 410 || code in 500..599
+                    ) {
+                        // Confirmed dead: real HTTP rejection or a broken playlist.
+                        // Network/timeout failures stay eligible as unverified fallbacks.
+                        markDead(context, candidate.url)
+                    }
                 }
             }
             futures.forEach { runCatching { it.get() } }
@@ -88,11 +97,18 @@ internal object StreamFilter {
                 .thenBy { results[it.url]!!.second })
             .forEach { output.put(it.json) }
 
+        // If every probe was inconclusive (common on restricted TV networks), still send
+        // the highest-labelled direct link. The IPTV app will verify it during playback.
+        if (output.length() == 0) {
+            candidates.firstOrNull { it.url !in read(context) }?.let { output.put(it.json) }
+        }
+
         cache[key] = Cached(System.currentTimeMillis(), output)
         return output
     }
 
-    private fun probe(url: String, headers: Map<String, String>): Boolean = try {
+    /** HTTP status, or [NETWORK_FAILURE]/[BAD_PLAYLIST] for non-HTTP outcomes. */
+    private fun probe(url: String, headers: Map<String, String>): Int = try {
         val connection = URL(url).openConnection() as HttpURLConnection
         connection.connectTimeout = 4_000
         connection.readTimeout = 6_000
@@ -107,7 +123,7 @@ internal object StreamFilter {
         val code = connection.responseCode
         if (code !in 200..399 && code != 416) {
             connection.disconnect()
-            false
+            code
         } else {
             val body = BufferedReader(InputStreamReader(connection.inputStream, Charsets.UTF_8)).use { reader ->
                 val buffer = CharArray(16_384)
@@ -117,10 +133,10 @@ internal object StreamFilter {
             connection.disconnect()
             val playlist = url.substringBefore('?').endsWith(".m3u8", true) ||
                 body.contains("#EXTM3U", true)
-            !playlist || body.contains("#EXTM3U", true)
+            if (!playlist || body.contains("#EXTM3U", true)) code else BAD_PLAYLIST
         }
     } catch (_: Exception) {
-        false
+        NETWORK_FAILURE
     }
 
     private fun headersOf(stream: JSONObject): Map<String, String> {
