@@ -79,6 +79,8 @@ class StremioAddon private constructor(private val root: String) {
             if (!value.startsWith("http://", true) && !value.startsWith("https://", true)) return null
             if (value.endsWith("/manifest.json", true)) {
                 value = value.dropLast("/manifest.json".length)
+            } else if (value.endsWith("/configure", true)) {
+                value = value.dropLast("/configure".length)
             }
             return value.trimEnd('/').takeIf { it.isNotEmpty() }
         }

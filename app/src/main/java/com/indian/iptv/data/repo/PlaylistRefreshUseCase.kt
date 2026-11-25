@@ -208,7 +208,7 @@ class PlaylistRefreshUseCase(
     companion object {
         private const val TAG = "PlaylistRefresh"
         /** Bump when the stored catalogue gains data that only a full reload fills in. */
-        const val CATALOGUE_VERSION = 22
+        const val CATALOGUE_VERSION = 23
         const val EPG_MAX_AGE_MS: Long = 6L * 3_600_000L
     }
 }
