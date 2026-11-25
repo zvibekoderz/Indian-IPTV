@@ -31,7 +31,7 @@ jobs:
           cache: gradle
 
       - name: Build debug APKs (TV + mobile modules)
-        run: ./gradlew :app:assembleDebug :mobileapp:assembleDebug :bridgeautostart:assembleDebug --stacktrace
+        run: ./gradlew :app:assembleDebug :mobileapp:assembleDebug :bridgeautostart:assembleDebug :addonserver:assembleDebug --stacktrace
 
       - name: Upload APK artifacts
         if: always()
@@ -42,6 +42,7 @@ jobs:
             app/build/outputs/apk/debug/app-debug.apk
             mobileapp/build/outputs/apk/debug/mobileapp-debug.apk
             bridgeautostart/build/outputs/apk/debug/bridgeautostart-debug.apk
+            addonserver/build/outputs/apk/debug/addonserver-debug.apk
           if-no-files-found: error
 
   unit-tests:
@@ -59,7 +60,7 @@ jobs:
           cache: gradle
 
       - name: Run unit tests
-        run: ./gradlew :app:testDebugUnitTest :mobileapp:testDebugUnitTest :bridgeautostart:testDebugUnitTest --stacktrace
+        run: ./gradlew :app:testDebugUnitTest :mobileapp:testDebugUnitTest :bridgeautostart:testDebugUnitTest :addonserver:testDebugUnitTest --stacktrace
 
       - name: Upload test report
         if: always()
