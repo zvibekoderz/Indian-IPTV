@@ -18,4 +18,3 @@ rootProject.name = "androidplayer"
 include(":app")
 include(":mobileapp")
 include(":bridgeautostart")
-include(":addonserver")
