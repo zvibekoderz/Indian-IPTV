@@ -1,0 +1,134 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.indian.iptv.bridgeautostart"
+4    android:versionCode="1"
+5    android:versionName="1.0" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="29"
+9        android:targetSdkVersion="34" />
+10
+11    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+11-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:4:5-81
+11-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:4:22-78
+12    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+12-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:5:5-77
+12-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:5:22-74
+13    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+13-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:6:5-77
+13-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:6:22-74
+14
+15    <uses-feature
+15-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:8:5-87
+16        android:name="android.software.leanback"
+16-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:8:19-59
+17        android:required="false" />
+17-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:8:60-84
+18
+19    <!-- Required on Android 11+ to see whether Bridge is installed. -->
+20    <queries>
+20-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:11:5-13:15
+21        <package android:name="com.cncverse.stremiobridge" />
+21-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:12:9-62
+21-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:12:18-59
+22    </queries>
+23
+24    <application
+24-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:15:5-63:19
+25        android:allowBackup="false"
+25-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:16:9-36
+26        android:debuggable="true"
+27        android:extractNativeLibs="false"
+28        android:label="@string/app_name"
+28-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:17:9-41
+29        android:theme="@style/Theme.BridgeAutoStart" >
+29-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:18:9-53
+30        <activity
+30-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:20:9-29:20
+31            android:name="com.indian.iptv.bridgeautostart.MainActivity"
+31-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:21:13-41
+32            android:exported="true"
+32-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:22:13-36
+33            android:launchMode="singleTop" >
+33-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:23:13-43
+34            <intent-filter>
+34-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:24:13-28:29
+35                <action android:name="android.intent.action.MAIN" />
+35-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:25:17-69
+35-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:25:25-66
+36
+37                <category android:name="android.intent.category.LAUNCHER" />
+37-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:26:17-77
+37-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:26:27-74
+38                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+38-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:27:17-86
+38-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:27:27-83
+39            </intent-filter>
+40        </activity>
+41
+42        <receiver
+42-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:31:9-41:20
+43            android:name="com.indian.iptv.bridgeautostart.BootReceiver"
+43-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:32:13-41
+44            android:enabled="true"
+44-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:33:13-35
+45            android:exported="true"
+45-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:34:13-36
+46            android:permission="android.permission.RECEIVE_BOOT_COMPLETED" >
+46-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:35:13-75
+47            <intent-filter>
+47-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:36:13-40:29
+48                <action android:name="android.intent.action.BOOT_COMPLETED" />
+48-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:37:17-79
+48-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:37:25-76
+49                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+49-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:38:17-86
+49-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:38:25-83
+50                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+50-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:39:17-84
+50-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:39:25-81
+51            </intent-filter>
+52        </receiver>
+53
+54        <!--
+55             Short-lived foreground service: Android permits activity starts from it
+56             during boot, so Bridge's own UI can be opened without user interaction.
+57        -->
+58        <service
+58-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:45:9-47:40
+59            android:name="com.indian.iptv.bridgeautostart.LaunchService"
+59-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:46:13-42
+60            android:exported="false" />
+60-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:47:13-37
+61
+62        <!--
+63             Presses Bridge's own "Start Server" button via the standard accessibility
+64             tree. No Bridge code, assets or private APIs are used.
+65        -->
+66        <service
+66-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:51:9-62:19
+67            android:name="com.indian.iptv.bridgeautostart.StartAccessibilityService"
+67-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:52:13-54
+68            android:exported="true"
+68-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:53:13-36
+69            android:label="@string/a11y_label"
+69-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:55:13-47
+70            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" >
+70-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:54:13-79
+71            <intent-filter>
+71-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:56:13-58:29
+72                <action android:name="android.accessibilityservice.AccessibilityService" />
+72-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:57:17-92
+72-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:57:25-89
+73            </intent-filter>
+74
+75            <meta-data
+75-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:59:13-61:72
+76                android:name="android.accessibilityservice"
+76-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:60:17-60
+77                android:resource="@xml/accessibility_service_config" />
+77-->/root/projects/Indian-IPTV/bridgeautostart/src/main/AndroidManifest.xml:61:17-69
+78        </service>
+79    </application>
+80
+81</manifest>

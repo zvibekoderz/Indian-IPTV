@@ -1,0 +1,45 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.indian.iptv.bridgeautostart-mergeDebugResources-2:/values/values.xml",
+            "map": [
+                {
+                    "source": "/root/projects/Indian-IPTV/bridgeautostart/src/main/res/values/styles.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endLines": "6",
+                        "endColumns": "12",
+                        "endOffsets": "339"
+                    },
+                    "to": {
+                        "startLines": "5",
+                        "startColumns": "4",
+                        "startOffsets": "360",
+                        "endLines": "9",
+                        "endColumns": "12",
+                        "endOffsets": "644"
+                    }
+                },
+                {
+                    "source": "/root/projects/Indian-IPTV/bridgeautostart/src/main/res/values/strings.xml",
+                    "from": {
+                        "startLines": "4,3,2",
+                        "startColumns": "4,4,4",
+                        "startOffsets": "167,110,55",
+                        "endColumns": "192,56,54",
+                        "endOffsets": "355,162,105"
+                    },
+                    "to": {
+                        "startLines": "2,3,4",
+                        "startColumns": "4,4,4",
+                        "startOffsets": "55,248,305",
+                        "endColumns": "192,56,54",
+                        "endOffsets": "243,300,355"
+                    }
+                }
+            ]
+        }
+    ]
+}

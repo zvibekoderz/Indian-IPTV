@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Bridge Auto Start</string>
+    <string name="a11y_label">Bridge Auto Start</string>
+    <string name="a11y_description">Starts CNCVerse Bridge’s own server by pressing its Start Server button after the TV boots. Bridge remains an unmodified, separately installed app.</string>
+</resources>

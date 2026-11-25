@@ -1,0 +1,7 @@
+R_DEF: Internal format may change without notice
+local
+string a11y_description
+string a11y_label
+string app_name
+style Theme.BridgeAutoStart
+xml accessibility_service_config

@@ -1,0 +1,5 @@
+int string a11y_description 0x7f010000
+int string a11y_label 0x7f010001
+int string app_name 0x7f010002
+int style Theme_BridgeAutoStart 0x7f020000
+int xml accessibility_service_config 0x7f030000
