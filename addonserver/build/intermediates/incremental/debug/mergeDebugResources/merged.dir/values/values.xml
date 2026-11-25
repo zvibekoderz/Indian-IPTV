@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CNC Add-on Server</string>
+    <style name="Theme.AddonServer" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:colorBackground">#0A0A0C</item>
+        <item name="android:textColorPrimary">#F4F4F6</item>
+    </style>
+</resources>

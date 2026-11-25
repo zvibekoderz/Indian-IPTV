@@ -1,0 +1,38 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.indian.iptv.addonserver-mergeDebugResources-2:/values/values.xml",
+            "map": [
+                {
+                    "source": "/root/projects/Indian-IPTV/addonserver/src/main/res/values/strings.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "54",
+                        "endOffsets": "105"
+                    }
+                },
+                {
+                    "source": "/root/projects/Indian-IPTV/addonserver/src/main/res/values/styles.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endLines": "5",
+                        "endColumns": "12",
+                        "endOffsets": "272"
+                    },
+                    "to": {
+                        "startLines": "3",
+                        "startColumns": "4",
+                        "startOffsets": "110",
+                        "endLines": "6",
+                        "endColumns": "12",
+                        "endOffsets": "327"
+                    }
+                }
+            ]
+        }
+    ]
+}
