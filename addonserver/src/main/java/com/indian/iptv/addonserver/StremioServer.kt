@@ -72,7 +72,7 @@ internal class StremioServer(private val context: Context) {
 
     private fun handle(path: String): Pair<String, String> {
         val data = aggregator.data(context)
-        aggregator.setUpstreamsForStreams(data.upstreams)
+        aggregator.configure(context.applicationContext, data.upstreams)
         return when {
             path == "/manifest.json" || path == "/" -> "200 OK" to manifest(data).toString()
             path.startsWith("/catalog/") -> "200 OK" to catalog(data, path).toString()

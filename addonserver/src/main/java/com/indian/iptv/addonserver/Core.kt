@@ -204,20 +204,18 @@ internal class Aggregator {
         // Legacy ids (s<index>:<originalId>) still resolve after an upgrade.
         val originalId = idMap[prefixedId] ?: prefixedId.substring(separator + 1)
         val base = normalize(dataStaticUpstream(index)) ?: return result
-        val json = Net.getJson("$base/stream/$type/${encode(originalId)}.json") ?: return result
-        val streams = json.optJSONArray("streams") ?: return result
-        val seen = HashSet<String>()
-        for (i in 0 until streams.length()) {
-            val stream = streams.optJSONObject(i) ?: continue
-            val url = stream.optString("url")
-            if (!url.startsWith("http") || !seen.add(url)) continue
-            result.put(stream)
-        }
-        return result
+        val context = appContext ?: return result
+        return StreamFilter.working(context, base, type, originalId)
     }
 
     @Volatile private var staticUpstreams: List<String> = emptyList()
-    fun setUpstreamsForStreams(list: List<String>) { staticUpstreams = list }
+    @Volatile private var appContext: Context? = null
+
+    fun configure(context: Context, upstreams: List<String>) {
+        appContext = context.applicationContext
+        staticUpstreams = upstreams
+    }
+
     private fun dataStaticUpstream(index: Int): String = staticUpstreams.getOrNull(index).orEmpty()
 
     private fun pluginNamesViaRepo(url: String): List<String> = RepoReader.pluginNames(url)
