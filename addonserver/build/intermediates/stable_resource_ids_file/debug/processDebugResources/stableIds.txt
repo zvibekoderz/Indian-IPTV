@@ -1,2 +1,0 @@
-com.indian.iptv.addonserver:style/Theme.AddonServer = 0x7f020000
-com.indian.iptv.addonserver:string/app_name = 0x7f010000

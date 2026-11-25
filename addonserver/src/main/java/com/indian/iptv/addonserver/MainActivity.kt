@@ -43,8 +43,8 @@ class MainActivity : Activity() {
         repoList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(repoList)
 
-        root.addView(label("Upstream Stremio add-on URLs", 18f))
-        val upstreamInput = input("https://cncverse.dpdns.org/manifest.json")
+        root.addView(label("Add-on configure URLs (or manifest URLs)", 18f))
+        val upstreamInput = input("https://cncverse.dpdns.org/u/.../configure")
         root.addView(upstreamInput)
         root.addView(button("Add add-on URL") { addUrl(upstreamInput, Prefs.upstreams(this), false) })
         upstreamList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }

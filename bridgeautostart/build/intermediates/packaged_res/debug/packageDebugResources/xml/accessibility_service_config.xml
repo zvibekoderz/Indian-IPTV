@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:description="@string/a11y_description"
-    android:packageNames="com.cncverse.stremiobridge"
-    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
-    android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagIncludeNotImportantViews|flagReportViewIds"
-    android:canPerformGestures="false"
-    android:notificationTimeout="100" />

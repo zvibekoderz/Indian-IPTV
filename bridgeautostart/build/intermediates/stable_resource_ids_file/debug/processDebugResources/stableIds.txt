@@ -1,5 +1,0 @@
-com.indian.iptv.bridgeautostart:style/Theme.BridgeAutoStart = 0x7f020000
-com.indian.iptv.bridgeautostart:string/a11y_label = 0x7f010001
-com.indian.iptv.bridgeautostart:xml/accessibility_service_config = 0x7f030000
-com.indian.iptv.bridgeautostart:string/app_name = 0x7f010002
-com.indian.iptv.bridgeautostart:string/a11y_description = 0x7f010000

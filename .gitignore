@@ -4,6 +4,8 @@
 /build/
 /app/build/
 /mobileapp/build/
+/addonserver/build/
+/bridgeautostart/build/
 /captures/
 .externalNativeBuild/
 .cxx/

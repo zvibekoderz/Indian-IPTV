@@ -17,14 +17,13 @@ internal object Prefs {
     private const val KEY_UPSTREAMS = "upstream_urls"
     private const val KEY_AUTO_START = "auto_start"
 
-    private val DEFAULT_REPOS = listOf(
-        "https://raw.githubusercontent.com/NivinCNC/CNCVerse-Cloud-Stream-Extension/refs/heads/builds/CNC.json",
-    )
+    private val DEFAULT_REPOS: List<String> = emptyList()
 
     private val DEFAULT_UPSTREAMS = listOf(
+        "https://cncverse.dpdns.org/u/p_hp9u0hb5bw8s/configure",
+        "https://cncverse.dpdns.org/u/p_zaidla1redjb/configure",
+        "https://cncverse.dpdns.org/u/p_bzvv0txb102g/configure",
         "https://cncverse.dpdns.org/manifest.json",
-        "https://cncverse.dpdns.org/u/p_zaidla1redjb/manifest.json",
-        "https://cncverse.dpdns.org/u/p_bzvv0txb102g/manifest.json",
     )
 
     private fun prefs(context: Context) = context.getSharedPreferences(NAME, Context.MODE_PRIVATE)
@@ -217,6 +216,9 @@ internal class Aggregator {
         if (value.isEmpty()) return null
         if (!value.contains("://")) value = "http://$value"
         if (!value.startsWith("http://", true) && !value.startsWith("https://", true)) return null
+        if (value.endsWith("/configure", true)) {
+            value = value.dropLast("/configure".length).trimEnd('/')
+        }
         return if (value.endsWith("/manifest.json", true)) {
             value.dropLast("/manifest.json".length).trimEnd('/')
         } else value
