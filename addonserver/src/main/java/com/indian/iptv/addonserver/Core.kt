@@ -91,6 +91,43 @@ internal object Net {
 /** Reads CloudStream repo JSON files and returns the plugin names they contain. */
 internal object RepoReader {
     data class RepoInfo(val name: String, val url: String, val pluginCount: Int)
+    data class PluginInfo(
+        val name: String,
+        val url: String,
+        val types: List<String>,
+        val iconUrl: String,
+        val version: Int,
+    )
+
+    /** Reads every plugin entry from a CloudStream repo JSON. */
+    fun plugins(repoUrl: String): List<PluginInfo> {
+        val repo = Net.getJson(repoUrl) ?: return emptyList()
+        val lists = repo.optJSONArray("pluginLists") ?: return emptyList()
+        val result = ArrayList<PluginInfo>()
+        for (i in 0 until lists.length()) {
+            val listUrl = lists.optString(i).takeIf { it.startsWith("http") } ?: continue
+            val array = Net.getArray(listUrl)
+                ?: Net.getJson(listUrl)?.optJSONArray("plugins")
+                ?: continue
+            for (j in 0 until array.length()) {
+                val obj = array.opt(j) as? JSONObject ?: continue
+                val url = obj.optString("url")
+                if (!url.startsWith("http")) continue
+                val types = ArrayList<String>()
+                obj.optJSONArray("tvTypes")?.let { arr ->
+                    for (k in 0 until arr.length()) types += arr.optString(k)
+                }
+                result += PluginInfo(
+                    name = obj.optString("name").ifBlank { obj.optString("internalName") },
+                    url = url,
+                    types = types,
+                    iconUrl = obj.optString("iconUrl"),
+                    version = obj.optInt("version"),
+                )
+            }
+        }
+        return result
+    }
 
     /** Repos published by the add-on's public /api/repos endpoint. */
     fun apiRepos(base: String): List<RepoInfo> {
@@ -148,6 +185,8 @@ internal class Aggregator {
         val labels: Map<String, CatInfo>,
         /** CloudStream repos published by the add-on, plus any added manually. */
         val repos: List<RepoReader.RepoInfo>,
+        /** Every plugin listed by those repos. */
+        val plugins: List<RepoReader.PluginInfo>,
         val builtAt: Long,
     )
 
@@ -162,6 +201,7 @@ internal class Aggregator {
         }.orEmpty()
         val manualRepos = Prefs.repos(context).map { RepoReader.RepoInfo(it, it, 0) }
         val repos = (apiRepos + manualRepos).distinctBy { it.url }
+        val plugins = repos.flatMap { RepoReader.plugins(it.url) }.distinctBy { it.url }
         val tv = LinkedHashMap<String, Meta>()
         val movies = LinkedHashMap<String, Meta>()
         val perCatalog = LinkedHashMap<String, List<Meta>>()
@@ -210,6 +250,7 @@ internal class Aggregator {
             catalogs = perCatalog,
             labels = labels,
             repos = repos,
+            plugins = plugins,
             builtAt = now,
         )
         cached = result

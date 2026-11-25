@@ -77,7 +77,8 @@ class MainActivity : Activity() {
     private fun render() {
         val running = ServerService.server(this).isRunning
         val repos = ServerService.server(this).repos(this)
-        repoSummary.text = "Repos (${repos.size}) · Plugins (${repos.sumOf { it.pluginCount }}): " +
+        val pluginCount = ServerService.server(this).plugins(this).size
+        repoSummary.text = "Repos (${repos.size}) · Plugins (${pluginCount}): " +
             repos.take(6).joinToString(", ") { it.name } +
             if (repos.size > 6) " …" else ""
         status.text = buildString {

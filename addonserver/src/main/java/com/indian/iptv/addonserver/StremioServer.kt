@@ -46,6 +46,8 @@ internal class StremioServer(private val context: Context) {
 
     fun repos(context: Context): List<RepoReader.RepoInfo> = aggregator.data(context).repos
 
+    fun plugins(context: Context): List<RepoReader.PluginInfo> = aggregator.data(context).plugins
+
     fun stop() {
         running = false
         runCatching { socket?.close() }
@@ -77,6 +79,7 @@ internal class StremioServer(private val context: Context) {
         aggregator.configure(context.applicationContext, data.upstreams)
         return when {
             path == "/manifest.json" || path == "/" -> "200 OK" to manifest(data).toString()
+            path == "/plugins.json" -> "200 OK" to plugins(data).toString()
             path.startsWith("/catalog/") -> "200 OK" to catalog(data, path).toString()
             path.startsWith("/stream/") -> "200 OK" to streams(path).toString()
             else -> "404 Not Found" to JSONObject().put("error", "not found").toString()
@@ -100,6 +103,21 @@ internal class StremioServer(private val context: Context) {
             .put("resources", JSONArray().put("catalog").put("stream"))
             .put("types", JSONArray().put("tv").put("movie"))
             .put("catalogs", catalogs)
+    }
+
+    private fun plugins(data: Aggregator.Data): JSONArray {
+        val array = JSONArray()
+        data.plugins.forEach { p ->
+            array.put(
+                JSONObject()
+                    .put("name", p.name)
+                    .put("url", p.url)
+                    .put("types", JSONArray().put(p.types))
+                    .put("iconUrl", p.iconUrl)
+                    .put("version", p.version),
+            )
+        }
+        return array
     }
 
     private fun catalog(data: Aggregator.Data, path: String): JSONObject {
