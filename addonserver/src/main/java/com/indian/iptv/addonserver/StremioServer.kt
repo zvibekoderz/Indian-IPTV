@@ -132,7 +132,7 @@ internal class StremioServer(private val context: Context) {
     }
 
     companion object {
-        const val PORT = 8080
+        const val PORT = 8090
         const val ALL_TV = "all_tv"
         const val ALL_MOVIES = "all_movie"
     }

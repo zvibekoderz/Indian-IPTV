@@ -72,6 +72,8 @@ class ServerService : Service() {
         fun serverUrl(context: Context): String =
             "http://${lanAddress(context)}:${StremioServer.PORT}/manifest.json"
 
+        fun localUrl(): String = "http://127.0.0.1:${StremioServer.PORT}/manifest.json"
+
         private fun lanAddress(context: Context): String = runCatching {
             NetworkInterface.getNetworkInterfaces().toList()
                 .filter { it.isUp && !it.isLoopback }

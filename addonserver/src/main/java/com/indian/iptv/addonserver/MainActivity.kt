@@ -55,8 +55,8 @@ class MainActivity : Activity() {
         root.addView(row(startButton, autoButton))
         root.addView(button("Clear dead streams") { StreamFilter.clearDead(this); render() })
         root.addView(label(
-            "Paste this server URL into Indian IPTV → Settings → Add-ons: " +
-                ServerService.serverUrl(this),
+            "Paste this into Indian IPTV → Settings → Add-ons (use Local URL on this TV): " +
+                ServerService.localUrl() + "  /  " + ServerService.serverUrl(this),
             14f,
         ))
         setContentView(ScrollView(this).apply { addView(root) })
@@ -74,7 +74,8 @@ class MainActivity : Activity() {
     private fun render() {
         val running = ServerService.server(this).isRunning
         status.text = buildString {
-            append("Server URL: ").append(ServerService.serverUrl(this@MainActivity)).append('\n')
+            append("Local URL: ").append(ServerService.localUrl()).append('\n')
+            append("LAN URL: ").append(ServerService.serverUrl(this@MainActivity)).append('\n')
             append("Status: ").append(if (running) "RUNNING" else "stopped").append('\n')
             append("CloudStream repos: ").append(Prefs.repos(this@MainActivity).size).append('\n')
             append("Upstream add-ons: ").append(Prefs.upstreams(this@MainActivity).size).append('\n')

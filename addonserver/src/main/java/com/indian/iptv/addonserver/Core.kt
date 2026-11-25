@@ -24,6 +24,7 @@ internal object Prefs {
         "https://cncverse.dpdns.org/u/p_zaidla1redjb/configure",
         "https://cncverse.dpdns.org/u/p_bzvv0txb102g/configure",
         "https://cncverse.dpdns.org/manifest.json",
+        "http://127.0.0.1:8080/manifest.json",
     )
 
     private fun prefs(context: Context) = context.getSharedPreferences(NAME, Context.MODE_PRIVATE)
