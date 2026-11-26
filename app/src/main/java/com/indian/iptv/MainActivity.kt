@@ -123,6 +123,7 @@ class MainActivity : ComponentActivity() {
         title: String,
         headers: Map<String, String>,
         channelId: String? = null,
+        resumeMs: Long = 0L,
     ) {
         val id = channelId ?: "addon:${url.hashCode()}"
         val userAgent = headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value
@@ -138,6 +139,15 @@ class MainActivity : ComponentActivity() {
                 putExtra(PlayerActivity.EXTRA_ADHOC_TYPE, ContentType.MOVIE.name)
                 putExtra(PlayerActivity.EXTRA_ADHOC_USER_AGENTS, arrayOf(userAgent))
                 putExtra(PlayerActivity.EXTRA_ADHOC_REFERRERS, arrayOf(referrer))
+                if (resumeMs > 0L) putExtra(PlayerActivity.EXTRA_RESUME_POSITION_MS, resumeMs)
+                putExtra(
+                    PlayerActivity.EXTRA_ADHOC_HEADER_NAMES,
+                    ArrayList(headers.entries.map { it.key }),
+                )
+                putExtra(
+                    PlayerActivity.EXTRA_ADHOC_HEADER_VALUES,
+                    ArrayList(headers.entries.map { it.value }),
+                )
             },
         )
     }
@@ -317,7 +327,7 @@ private fun AppRoot(
     onPlay: (Channel, List<Channel>, Long) -> Unit,
     onPlayEpisode: (Episode, SeriesSeason, SeriesRef, Long) -> Unit,
     onPlayDirect: (Channel) -> Unit,
-    onPlayAddon: (String, String, Map<String, String>) -> Unit,
+    onPlayAddon: (String, String, Map<String, String>, String?, Long) -> Unit,
 ) {
     val app = IptvApp.get()
     // Sentinel wrapper for "first emit hasn't arrived yet" vs "emit arrived but null".
@@ -428,7 +438,7 @@ private fun AppRouteHost(
     onPlay: (Channel, List<Channel>, Long) -> Unit,
     onPlayEpisode: (Episode, SeriesSeason, SeriesRef, Long) -> Unit,
     onPlayDirect: (Channel) -> Unit,
-    onPlayAddon: (String, String, Map<String, String>) -> Unit,
+    onPlayAddon: (String, String, Map<String, String>, String?, Long) -> Unit,
 ) {
     // Keyed on the route so two consecutive screens of the same kind (film → related film)
     // don't share remembered state such as the initial focus request.
@@ -505,7 +515,7 @@ private fun AppRouteHost(
             )
             Route.BridgeTv -> BridgeTvScreen(
                 onBack = onBack,
-                onPlay = onPlayAddon,
+                onPlay = { url, title, headers -> onPlayAddon(url, title, headers, null, 0L) },
             )
             is Route.Categories -> CategoriesScreen(
                 type = route.type,

@@ -239,6 +239,24 @@ interface ChannelDao {
     @Query("SELECT * FROM watch_progress WHERE profileId = :profileId AND channelId = :id LIMIT 1")
     suspend fun getProgress(profileId: String, id: String): WatchProgressEntity?
 
+    /**
+     * Unfinished add-on titles only, newest-first. The Add-ons tab uses this for its
+     * continue-watching filter; it deliberately does not join `channels`, because series
+     * catalogues are not imported into that table.
+     */
+    @Query(
+        "SELECT * FROM watch_progress WHERE profileId = :profileId " +
+            "AND channelId LIKE 'addon:%' " +
+            "AND positionMs > 0 AND durationMs > 0 " +
+            "AND positionMs < durationMs - :finishThresholdMs " +
+            "ORDER BY updatedAt DESC LIMIT :limit",
+    )
+    fun observeAddonProgress(
+        profileId: String,
+        finishThresholdMs: Long,
+        limit: Int,
+    ): Flow<List<WatchProgressEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveProgress(progress: WatchProgressEntity)
 

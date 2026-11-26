@@ -1028,8 +1028,11 @@ private fun ManageFavoritesView(
             Spacer(Modifier.width(16.dp))
 
             if (orderMode) {
-                val favs = remember(state.favoriteIds, tvChannels) {
-                    inFavoriteOrder(tvChannels, state.favoriteIds)
+                // Set equality ignores iteration order, so a reorder would keep the cached
+                // list stale. Key the remember on the ordered List instead.
+                val favoriteOrder = state.favoriteIds.toList()
+                val favs = remember(favoriteOrder, tvChannels) {
+                    inFavoriteOrder(tvChannels, favoriteOrder)
                 }
                 if (favs.isEmpty()) {
                     Box(

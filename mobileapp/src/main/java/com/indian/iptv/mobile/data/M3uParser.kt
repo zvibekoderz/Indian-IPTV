@@ -11,6 +11,8 @@ data class Channel(
     val tvgId: String?,
     val userAgent: String?,
     val referrer: String?,
+    /** All headers supplied by the add-on/playlist for this stream. */
+    val headers: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -78,6 +80,10 @@ object M3uParser {
                             tvgId = attrs["tvg-id"]?.takeIf { it.isNotBlank() },
                             userAgent = userAgent?.takeIf { it.isNotBlank() },
                             referrer = referrer?.takeIf { it.isNotBlank() },
+                            headers = buildMap {
+                                userAgent?.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
+                                referrer?.takeIf { it.isNotBlank() }?.let { put("Referer", it) }
+                            },
                         )
                     }
                     name = ""

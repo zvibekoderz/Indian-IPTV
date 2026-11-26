@@ -16,14 +16,8 @@ private val Context.dataStore by preferencesDataStore(name = "settings")
 /** Shipped default playlist: iptv-org's India-only list (~220 KB). */
 const val DEFAULT_M3U_URL = "https://iptv-org.github.io/iptv/countries/in.m3u"
 
-/** Add-on sources pre-filled on first run / migration. */
-val DEFAULT_ADDON_URLS = listOf(
-    "https://cncverse.dpdns.org/u/p_hp9u0hb5bw8s/configure",
-    "https://cncverse.dpdns.org/u/p_zaidla1redjb/configure",
-    "https://cncverse.dpdns.org/u/p_bzvv0txb102g/configure",
-    "https://cncverse.dpdns.org/manifest.json",
-    "http://127.0.0.1:8090/manifest.json",
-)
+/** No add-on source is pre-filled; all URLs come from the user's Settings form. */
+val DEFAULT_ADDON_URLS: List<String> = emptyList()
 
 class SettingsStore(private val context: Context) {
 

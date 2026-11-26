@@ -308,6 +308,7 @@ fun AddonsScreen(settings: Settings, onBack: () -> Unit, onPlay: (Channel) -> Un
                                             tvgId = null,
                                             userAgent = ua,
                                             referrer = ref,
+                                            headers = stream.headers,
                                         ),
                                     )
                                 },

@@ -155,21 +155,8 @@ fun BridgeTvScreen(
         scope.launch { app.settings.setBridgeFavouriteDismissals(next) }
     }
 
-    // Only stream-checked Udaya/udya/Kannada rows become favourites. DataStore can
-    // emit late, so merge on every change and never restore a confirmed-dead id.
-    val autoFavouriteIds = remember(entries, removedFavouriteIds, dismissedAutoFavouriteIds) {
-        entries.filter {
-            it.state == ProbeState.WORKING && it.stream != null &&
-                it.isAutoFavourite() &&
-                it.meta.id !in removedFavouriteIds &&
-                it.meta.id !in dismissedAutoFavouriteIds
-        }.map { it.meta.id }.toSet()
-    }
-    LaunchedEffect(savedFavourites, autoFavouriteIds, removedFavouriteIds, dismissedAutoFavouriteIds) {
-        saveFavourites(
-            (savedFavourites - removedFavouriteIds - dismissedAutoFavouriteIds) + autoFavouriteIds
-        )
-    }
+    // Favourites are manual only. Do not auto-star Udaya/udya/Kannada rows: a cleared
+    // star must stay cleared until the user adds it again.
 
     // DataStore may emit after the first composition; don't freeze the initial
     // empty value forever, or a return visit asks for the URL again.
@@ -202,10 +189,10 @@ fun BridgeTvScreen(
 
     // Udaya/Kannada rows are found by the full catalogue loader below and jump the
     // probe queue (see `sortedByDescending { it.isAutoFavourite() }`), so they are
-    // stream-checked and starred without a separate search sweep. A per-catalogue
-    // `?search=` sweep of all 139 catalogues is deliberately avoided: Bridge's
-    // single-threaded server degrades badly and starts returning empty catalogues
-    // after a few hundred search requests.
+    // stream-checked without a separate search sweep. They are not starred automatically.
+    // A per-catalogue `?search=` sweep of all 139 catalogues is deliberately avoided:
+    // Bridge's single-threaded server degrades badly and starts returning empty
+    // catalogues after a few hundred search requests.
 
     // Saved scroll offset lives outside composition so it survives leaving and
     // re-entering this screen (e.g. after playback in PlayerActivity).

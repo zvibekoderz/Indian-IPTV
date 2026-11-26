@@ -72,18 +72,18 @@ object StreamProbe {
         }
 
     private fun requestFor(url: String, headers: Map<String, String>): Request =
-        Request.Builder()
-            .url(url)
-            .header("Range", "bytes=0-0")
-            .header("User-Agent", headers.value("User-Agent") ?: DEFAULT_USER_AGENT)
-            .apply { headers.value("Referer")?.let { header("Referer", it) } }
-            .build()
+        Request.Builder().url(url).apply {
+            // Probe with exactly the same headers the player will send, otherwise
+            // signed/hotlink-protected streams look dead here and playable in theory.
+            headers.forEach { (name, value) -> header(name, value) }
+            if (headers.keys.none { it.equals("User-Agent", ignoreCase = true) }) {
+                header("User-Agent", DEFAULT_USER_AGENT)
+            }
+            header("Range", "bytes=0-0")
+        }.build()
 
     /** 416 means the resource exists but is smaller than the requested range. */
     private fun isSuccess(code: Int): Boolean = code in 200..399 || code == 416
-
-    private fun Map<String, String>.value(name: String): String? =
-        entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value
 
     private const val MAX_PLAYLIST_ENTRIES = 3
 

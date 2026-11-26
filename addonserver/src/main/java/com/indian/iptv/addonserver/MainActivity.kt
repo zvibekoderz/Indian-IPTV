@@ -47,7 +47,7 @@ class MainActivity : Activity() {
         root.addView(repoList)
 
         root.addView(label("Add-on configure URLs (or manifest URLs)", 18f))
-        val upstreamInput = input("https://cncverse.dpdns.org/u/.../configure")
+        val upstreamInput = input("Enter add-on configure or manifest URL")
         root.addView(upstreamInput)
         root.addView(button("Add add-on URL") { addUrl(upstreamInput, Prefs.upstreams(this), false) })
         upstreamList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }

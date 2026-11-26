@@ -308,6 +308,11 @@ class PlayerActivity : ComponentActivity() {
         val adhocType = intent.getStringExtra(EXTRA_ADHOC_TYPE)
         val adhocUserAgents = intent.getStringArrayExtra(EXTRA_ADHOC_USER_AGENTS)
         val adhocReferrers = intent.getStringArrayExtra(EXTRA_ADHOC_REFERRERS)
+        val adhocHeaderNames = intent.getStringArrayExtra(EXTRA_ADHOC_HEADER_NAMES).orEmpty()
+        val adhocHeaderValues = intent.getStringArrayExtra(EXTRA_ADHOC_HEADER_VALUES).orEmpty()
+        val adhocHeaders = adhocHeaderNames.indices.associate { i ->
+            adhocHeaderNames[i] to adhocHeaderValues.getOrElse(i) { "" }
+        }
 
         seriesMeta = intent.getStringExtra(EXTRA_SERIES_CHANNEL_ID)?.let { seriesId ->
             SeriesMeta(
@@ -340,6 +345,7 @@ class PlayerActivity : ComponentActivity() {
                             type = type,
                             userAgent = adhocUserAgents?.getOrNull(i),
                             referrer = adhocReferrers?.getOrNull(i),
+                            headers = adhocHeaders,
                         )
                     }
                 }
@@ -549,6 +555,7 @@ class PlayerActivity : ComponentActivity() {
                                                     streamUrl = next.url,
                                                     userAgent = next.userAgent,
                                                     referrer = next.referrer,
+                                                    headers = next.headers,
                                                 )
                                             } else c
                                         }
@@ -726,8 +733,14 @@ class PlayerActivity : ComponentActivity() {
         // carries them. Clearing on every channel change prevents headers leaking to the next.
         playbackHeaders.set(
             buildMap {
-                channel.userAgent?.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
-                channel.referrer?.takeIf { it.isNotBlank() }?.let { put("Referer", it) }
+                // Add-on streams may require Origin/Cookie/Authorization etc.
+                channel.headers.forEach { (name, value) -> put(name, value) }
+                if (keys.none { it.equals("User-Agent", ignoreCase = true) }) {
+                    channel.userAgent?.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
+                }
+                if (keys.none { it.equals("Referer", ignoreCase = true) }) {
+                    channel.referrer?.takeIf { it.isNotBlank() }?.let { put("Referer", it) }
+                }
             },
         )
         val p = player ?: return
@@ -1507,6 +1520,8 @@ class PlayerActivity : ComponentActivity() {
         const val EXTRA_ADHOC_TYPE = "adhoc_type"
         const val EXTRA_ADHOC_USER_AGENTS = "adhoc_user_agents"
         const val EXTRA_ADHOC_REFERRERS = "adhoc_referrers"
+        const val EXTRA_ADHOC_HEADER_NAMES = "adhoc_header_names"
+        const val EXTRA_ADHOC_HEADER_VALUES = "adhoc_header_values"
 
         /** Content type whose full playable list is the zap list; used instead of huge id arrays. */
         const val EXTRA_SCOPE_TYPE = "scope_type"

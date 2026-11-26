@@ -187,15 +187,27 @@ fun PlayerScreen(
         }
     }
 
-    val player = remember(channel.url) {
+    val player = remember(channel.url, channel.headers) {
         val httpFactory = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(30_000)
             .setDefaultRequestProperties(
                 buildMap {
-                    put("User-Agent", channel.userAgent ?: PlaylistFetcher.DEFAULT_USER_AGENT)
-                    channel.referrer?.let { put("Referer", it) }
+                    // Add-on streams can require Origin/Cookie/Authorization and other
+                    // headers in addition to User-Agent/Referer. Forward all of them.
+                    channel.headers.forEach { (name, value) -> put(name, value) }
+                    if (keys.none { it.equals("User-Agent", ignoreCase = true) }) {
+                        put(
+                            "User-Agent",
+                            channel.userAgent
+                                ?: channel.headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value
+                                ?: PlaylistFetcher.DEFAULT_USER_AGENT,
+                        )
+                    }
+                    if (keys.none { it.equals("Referer", ignoreCase = true) }) {
+                        channel.referrer?.let { put("Referer", it) }
+                    }
                 },
             )
         val loadControl = DefaultLoadControl.Builder()
@@ -215,7 +227,7 @@ fun PlayerScreen(
     // Keep the callback current without rebuilding the ExoPlayer listener.
     val onPlaybackErrorCurrent = rememberUpdatedState(onPlaybackError)
 
-    val listener = remember(channel.url) {
+    val listener = remember(channel.url, channel.headers) {
         object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 buffering = state == Player.STATE_BUFFERING
@@ -251,14 +263,14 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(channel.url) {
+    LaunchedEffect(channel.url, channel.headers) {
         player.addListener(listener)
         player.setMediaItem(MediaItem.fromUri(channel.url))
         player.prepare()
         player.playWhenReady = true
     }
 
-    DisposableEffect(channel.url) {
+    DisposableEffect(channel.url, channel.headers) {
         onDispose {
             player.removeListener(listener)
             player.release()

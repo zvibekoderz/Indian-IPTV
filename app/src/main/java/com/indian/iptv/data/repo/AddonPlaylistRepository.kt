@@ -11,7 +11,6 @@ import com.indian.iptv.data.addon.AddonStreamCache
 import com.indian.iptv.data.addon.AddonStreamResolver
 import com.indian.iptv.data.addon.StremioAddon
 import com.indian.iptv.data.db.ChannelDao
-import com.indian.iptv.data.db.IptvDatabase
 import com.indian.iptv.data.settings.SettingsStore
 
 /**
@@ -21,9 +20,10 @@ import com.indian.iptv.data.settings.SettingsStore
  * watch progress survive refreshes. Only movies and live TV are imported in this phase:
  * Stremio series metadata has no season/episode structure matching SeriesDetailScreen.
  *
- * Streams are resolved with [AddonStreamResolver] before a row is emitted, so only the
- * best working direct link reaches the home screen. Confirmed-dead links are excluded
- * up front and never reused.
+ * Rows are imported as metadata first; a cached verified stream is attached when one
+ * exists, and playback resolves the best working direct link on demand. Confirmed-dead
+ * links are excluded up front and never reused. Favourites are never added automatically —
+ * the user stars channels manually.
  */
 class AddonPlaylistRepository(
     private val urls: List<String>,
@@ -40,7 +40,6 @@ class AddonPlaylistRepository(
         if (urls.isEmpty()) return@withContext PlaylistSnapshot(channels = emptyList(), notModified = true)
 
         val dead = resolver.deadUrls()
-        val dismissals = runCatching { settings.bridgeFavouriteDismissals.first() }.getOrDefault(emptySet())
         val channels = ArrayList<Channel>()
         var successfulSources = 0
         var catalogCount = 0
@@ -92,7 +91,6 @@ class AddonPlaylistRepository(
                         userAgent = best?.userAgent,
                         referrer = best?.referrer,
                     )
-                    if (best != null) autoFavourite(id, meta.id, meta.name, dismissals)
                 }
                 onProgress(ImportProgress(ImportProgress.Stage.Live, channels.size))
             }
@@ -105,20 +103,8 @@ class AddonPlaylistRepository(
         PlaylistSnapshot(channels = channels)
     }
 
-    private suspend fun autoFavourite(
-        channelId: String,
-        metaId: String,
-        name: String,
-        dismissals: Set<String>,
-    ) {
-        if (!AUTO_FAVOURITE_REGEX.containsMatchIn(name.lowercase())) return
-        if (channelId in dismissals || metaId in dismissals) return
-        dao.addFavorite(IptvDatabase.DEFAULT_PROFILE_ID, channelId)
-    }
-
     companion object {
         private const val TAG = "AddonRepo"
-        private val AUTO_FAVOURITE_REGEX = Regex("udya|udaya|kannada")
         private const val CATALOG_ATTEMPTS = 3
         private const val CATALOG_RETRY_DELAY_MS = 1_000L
     }

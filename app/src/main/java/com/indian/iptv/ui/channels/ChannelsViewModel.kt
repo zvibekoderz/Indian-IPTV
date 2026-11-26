@@ -169,7 +169,7 @@ private object ChannelsDerivations {
     fun favorites(
         selectedType: ContentType,
         channels: List<Channel>,
-        favoriteIds: Set<String>,
+        favoriteIds: List<String>,
     ): List<Channel> =
         if (selectedType != ContentType.TV || favoriteIds.isEmpty()) emptyList()
         else inFavoriteOrder(channels, favoriteIds)
@@ -248,7 +248,7 @@ private object ChannelsDerivations {
         selectedType: ContentType,
         channels: List<Channel>,
         categories: List<String>,
-        favoriteIds: Set<String>,
+        favoriteIds: List<String>,
         continueWatching: List<Channel>,
         popularSeries: List<Channel>,
         popularMovies: List<Channel>,
@@ -673,7 +673,7 @@ class ChannelsViewModel : ViewModel() {
                     selectedType = s.selectedType,
                     channels = s.channels,
                     categories = s.categories,
-                    favoriteIds = s.favoriteIds,
+                    favoriteIds = s.favoriteIds.toList(),
                     continueWatching = s.continueWatching,
                     popularSeries = s.popularSeries,
                     popularMovies = s.popularMovies,
@@ -951,7 +951,7 @@ private data class DerivationInputs(
     val selectedType: ContentType,
     val channels: List<Channel>,
     val categories: List<String>,
-    val favoriteIds: Set<String>,
+    val favoriteIds: List<String>,
     val continueWatching: List<Channel>,
     val popularSeries: List<Channel>,
     val popularMovies: List<Channel>,
@@ -978,26 +978,10 @@ internal fun normalizeForSearch(text: String): String =
 
 private val COMBINING_MARKS = Regex("\\p{M}+")
 
-/** Channels that are favourites, in the order of [favoriteIds] (the user's own order).
- *  Auto-favourited add-on VIP/Udaya/Kannada channels lead the list; everything else
- *  keeps the user's ordering. */
-internal fun inFavoriteOrder(channels: List<Channel>, favoriteIds: Set<String>): List<Channel> {
+/** Channels that are favourites, in the exact order the user chose.
+ *  [favoriteIds] must be order-sensitive (a List), not a Set: reordering writes a new
+ *  `position` for every row and the rail must reflect that immediately. */
+internal fun inFavoriteOrder(channels: List<Channel>, favoriteIds: List<String>): List<Channel> {
     val byId = channels.associateBy { it.id }
-    val ordered = favoriteIds.mapNotNull { byId[it] }
-    val priority = ordered.filter { it.id.startsWith("addon:") && favouritePriorityRank(it) < 3 }
-        .sortedBy(::favouritePriorityRank)
-    if (priority.isEmpty()) return ordered
-    val priorityIds = priority.mapTo(HashSet()) { it.id }
-    return priority + ordered.filterNot { it.id in priorityIds }
-}
-
-/** JIOTV VIP → Udaya/udya → other Kannada, matching the add-on favourites order. */
-private fun favouritePriorityRank(channel: Channel): Int {
-    val text = "${channel.name} ${channel.groupTitle.orEmpty()}".lowercase()
-    return when {
-        listOf("jio vip", "jiotv vip", "vip (jiotv").any { it in text } -> 0
-        "udya" in text || "udaya" in text -> 1
-        "kannada" in text -> 2
-        else -> 3
-    }
+    return favoriteIds.mapNotNull { byId[it] }
 }

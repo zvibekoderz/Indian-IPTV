@@ -27,4 +27,6 @@ data class Channel(
     /** Headers required by some add-on/CDN streams (e.g. hotlink-protected links). */
     val userAgent: String? = null,
     val referrer: String? = null,
+    /** Full header set from an add-on stream; may include Origin/Cookie/Authorization. */
+    val headers: Map<String, String> = emptyMap(),
 )

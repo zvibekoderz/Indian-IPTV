@@ -127,27 +127,8 @@ fun BridgeTvScreen(
         settings.bridgeFavouriteDismissals = next
     }
 
-    // Only stream-checked Udaya ("udya")/Kannada rows are starred. Merge with saved
-    // favourites rather than replacing them, and never restore a confirmed-dead id.
-    val autoFavouriteIds = remember(entries, removedFavouriteIds, dismissedAutoFavouriteIds) {
-        entries.filter {
-            it.state == ProbeState.WORKING && it.stream != null &&
-                it.isAutoFavourite() &&
-                it.meta.id !in removedFavouriteIds &&
-                it.meta.id !in dismissedAutoFavouriteIds
-        }.map { it.meta.id }.toSet()
-    }
-    LaunchedEffect(
-        settings.bridgeFavourites,
-        autoFavouriteIds,
-        removedFavouriteIds,
-        dismissedAutoFavouriteIds,
-    ) {
-        saveFavourites(
-            (settings.bridgeFavourites - removedFavouriteIds - dismissedAutoFavouriteIds) +
-                autoFavouriteIds
-        )
-    }
+    // Favourites are manual only. Udaya/Kannada rows still jump the probe queue, but
+    // a star the user cleared must never be restored automatically.
 
     fun toggleFavourite(item: ChannelEntry) {
         val key = item.meta.id
@@ -168,10 +149,10 @@ fun BridgeTvScreen(
 
     // Udaya/Kannada rows are found by the full catalogue loader below and jump the
     // probe queue (see `sortedByDescending { it.isAutoFavourite() }`), so they are
-    // stream-checked and starred without a separate search sweep. A per-catalogue
-    // `?search=` sweep of all 139 catalogues is deliberately avoided: Bridge's
-    // single-threaded server degrades badly and starts returning empty catalogues
-    // after a few hundred search requests.
+    // stream-checked without a separate search sweep. They are not starred automatically.
+    // A per-catalogue `?search=` sweep of all 139 catalogues is deliberately avoided:
+    // Bridge's single-threaded server degrades badly and starts returning empty
+    // catalogues after a few hundred search requests.
 
     LaunchedEffect(activeUrl) {
         val instance = StremioAddon.create(activeUrl)
@@ -462,6 +443,7 @@ fun BridgeTvScreen(
                 tvgId = null,
                 userAgent = ua,
                 referrer = ref,
+                headers = stream.headers,
             ),
         )
     }

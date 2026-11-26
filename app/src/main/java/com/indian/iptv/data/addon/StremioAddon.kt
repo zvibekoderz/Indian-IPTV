@@ -53,6 +53,18 @@ class StremioAddon private constructor(private val root: String) {
     suspend fun streams(type: String, id: String): List<Stream> =
         parseStreams(getJson("$root/stream/${path(type)}/${path(id)}.json"))
 
+    /**
+     * Single-title metadata. Used by the Add-ons continue-watching row to rebuild a card
+     * for a saved channel id even when the title is not part of any currently-open
+     * catalogue (series, for example, are not imported into the main channels table).
+     */
+    suspend fun meta(type: String, id: String): Meta? = runCatching {
+        parseMeta(
+            getJson("$root/meta/${path(type)}/${path(id)}.json").optJSONObject("meta"),
+            type,
+        )
+    }.getOrNull()
+
     private suspend fun getJson(url: String): JSONObject = withContext(Dispatchers.IO) {
         // Let OkHttp supply its default headers. An explicit Accept header was
         // removed while investigating empty Bridge catalogues; it was not the
@@ -100,19 +112,23 @@ class StremioAddon private constructor(private val root: String) {
 
         internal fun parseCatalog(json: JSONObject, fallbackType: String): List<Meta> =
             json.optJSONArray("metas").orEmpty().mapNotNull { raw ->
-                val obj = raw as? JSONObject ?: return@mapNotNull null
-                val metaId = obj.optString("id").trim()
-                if (metaId.isEmpty()) return@mapNotNull null
-                Meta(
-                    id = metaId,
-                    type = obj.optString("type").trim().ifEmpty { fallbackType },
-                    name = obj.optString("name").trim().ifEmpty { metaId },
-                    poster = obj.optString("poster").trim().takeIf { it.startsWith("http", true) },
-                    background = obj.optString("background").trim().takeIf { it.startsWith("http", true) },
-                    description = obj.optString("description").trim().ifEmpty { null },
-                    releaseInfo = obj.optString("releaseInfo").trim().ifEmpty { null },
-                )
+                parseMeta(raw as? JSONObject, fallbackType)
             }
+
+        internal fun parseMeta(obj: JSONObject?, fallbackType: String): Meta? {
+            if (obj == null) return null
+            val metaId = obj.optString("id").trim()
+            if (metaId.isEmpty()) return null
+            return Meta(
+                id = metaId,
+                type = obj.optString("type").trim().ifEmpty { fallbackType },
+                name = obj.optString("name").trim().ifEmpty { metaId },
+                poster = obj.optString("poster").trim().takeIf { it.startsWith("http", true) },
+                background = obj.optString("background").trim().takeIf { it.startsWith("http", true) },
+                description = obj.optString("description").trim().ifEmpty { null },
+                releaseInfo = obj.optString("releaseInfo").trim().ifEmpty { null },
+            )
+        }
 
         internal fun parseStreams(json: JSONObject): List<Stream> =
             json.optJSONArray("streams").orEmpty().mapNotNull { raw ->

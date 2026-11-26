@@ -19,13 +19,8 @@ internal object Prefs {
 
     private val DEFAULT_REPOS: List<String> = emptyList()
 
-    private val DEFAULT_UPSTREAMS = listOf(
-        "https://cncverse.dpdns.org/u/p_hp9u0hb5bw8s/configure",
-        "https://cncverse.dpdns.org/u/p_zaidla1redjb/configure",
-        "https://cncverse.dpdns.org/u/p_bzvv0txb102g/configure",
-        "https://cncverse.dpdns.org/manifest.json",
-        "http://127.0.0.1:8080/manifest.json",
-    )
+    // No upstream is hardcoded: URLs come only from the Settings screen.
+    private val DEFAULT_UPSTREAMS: List<String> = emptyList()
 
     private fun prefs(context: Context) = context.getSharedPreferences(NAME, Context.MODE_PRIVATE)
 

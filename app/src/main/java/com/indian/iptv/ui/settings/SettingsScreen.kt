@@ -385,7 +385,7 @@ private fun AddonsSection(state: SettingsUiState, vm: SettingsViewModel) {
                         if (index == 0) "Add-on manifest URL" else "Additional add-on URL",
                     )
                 },
-                placeholder = { androidx.compose.material3.Text("http://192.168.1.5:8080/manifest.json") },
+                placeholder = { androidx.compose.material3.Text("http://<bridge-ip>:8080/manifest.json") },
                 singleLine = true,
                 modifier = Modifier.width(640.dp),
             )

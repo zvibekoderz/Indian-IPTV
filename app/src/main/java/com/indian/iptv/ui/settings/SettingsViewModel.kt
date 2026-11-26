@@ -75,6 +75,8 @@ class SettingsViewModel : ViewModel() {
 
     private var initialSource: SourceConfig? = null
     private var initialCategoryFilter: String = ""
+    /** True while the user is editing add-on URLs; stored values must not replace them. */
+    private var addonUrlsDirty = false
 
     init {
         viewModelScope.launch {
@@ -124,7 +126,13 @@ class SettingsViewModel : ViewModel() {
 
         // Add-on sources + persistent dead-link list.
         app.settings.addonUrls
-            .onEach { urls -> _state.update { it.copy(addonUrls = urls.ifEmpty { listOf("") }) } }
+            .onEach { urls ->
+                // DataStore re-emits after every write. Unsaved typed URLs must win,
+                // otherwise pressing Test/Save can silently restore old stored URLs.
+                if (!addonUrlsDirty) {
+                    _state.update { it.copy(addonUrls = urls.ifEmpty { listOf("") }) }
+                }
+            }
             .launchIn(viewModelScope)
         app.settings.addonsEnabled
             .onEach { v -> _state.update { it.copy(addonsEnabled = v) } }
@@ -165,6 +173,7 @@ class SettingsViewModel : ViewModel() {
             // Add-on URLs are independent of the primary source type and can be sent
             // alongside either M3U or Xtream from the same QR form.
             if (sub.addonUrls.isNotEmpty()) {
+                addonUrlsDirty = true
                 base.copy(
                     addonUrls = sub.addonUrls,
                     addonsEnabled = true,
@@ -181,6 +190,8 @@ class SettingsViewModel : ViewModel() {
             viewModelScope.launch {
                 app.settings.setAddonUrls(addonUrls)
                 app.settings.setAddonsEnabled(true)
+                addonUrlsDirty = false
+                _state.update { it.copy(addonUrls = addonUrls) }
             }
         }
     }
@@ -334,6 +345,7 @@ class SettingsViewModel : ViewModel() {
     // ── Add-on sources ────────────────────────────────────────────────
 
     fun setAddonUrl(index: Int, value: String) {
+        addonUrlsDirty = true
         _state.update { state ->
             val urls = state.addonUrls.toMutableList()
             if (index !in urls.indices) return@update state
@@ -343,10 +355,12 @@ class SettingsViewModel : ViewModel() {
     }
 
     fun addAddonUrl() {
+        addonUrlsDirty = true
         _state.update { it.copy(addonUrls = it.addonUrls + "", addonsSaved = false) }
     }
 
     fun removeAddonUrl(index: Int) {
+        addonUrlsDirty = true
         _state.update { state ->
             val urls = state.addonUrls.toMutableList()
             if (index !in urls.indices) return@update state
@@ -374,14 +388,22 @@ class SettingsViewModel : ViewModel() {
                 app.settings.setAddonsEnabled(true)
                 _state.update { it.copy(addonsEnabled = true) }
             }
-            _state.update { it.copy(addonsSaved = true, addonTestResult = null) }
+            // Saved now: allow stored values to resync on the next emission.
+            addonUrlsDirty = false
+            _state.update {
+                it.copy(
+                    addonUrls = urls.ifEmpty { listOf("") },
+                    addonsSaved = true,
+                    addonTestResult = null,
+                )
+            }
             if (urls.isNotEmpty()) app.appScope.launch { app.refreshUseCase(force = true) }
             onDone()
         }
     }
 
     fun testAddonUrl() {
-        val raw = _state.value.addonUrls.firstOrNull().orEmpty()
+        val raw = _state.value.addonUrls.firstOrNull { it.isNotBlank() }.orEmpty()
         val addon = StremioAddon.create(raw)
         if (addon == null) {
             _state.update { it.copy(addonTestResult = "Enter a valid http(s) add-on URL") }
