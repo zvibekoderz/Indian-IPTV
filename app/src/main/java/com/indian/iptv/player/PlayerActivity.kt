@@ -945,13 +945,18 @@ class PlayerActivity : ComponentActivity() {
             return
         }
         val current = channels.getOrNull(currentIndex)
+        // Prefer the group that actually CONTAINS the playing channel: a favourite lives in
+        // both the favourites group and its category group, and matching the category title
+        // first made long-press OK open a category list instead of Favourites when the
+        // channel was started from the favourites rail (the home rail title differs from
+        // the player's favourites label, so a title match is also unreliable there).
         val byTitle = channelGroups.indexOfFirst { g -> g.title == current?.groupTitle }
         val containing = channelGroups.indexOfFirst { g -> g.channels.any { it.id == current?.id } }
         channelGroupIndex = when {
             channels.size == channelGroups.firstOrNull()?.channels?.size &&
                 channelGroups.firstOrNull()?.channels?.any { it.id == current?.id } == true -> 0
-            byTitle >= 0 -> byTitle
             containing >= 0 -> containing
+            byTitle >= 0 -> byTitle
             else -> 0
         }
         controlsVisible = false

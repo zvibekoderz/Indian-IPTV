@@ -22,12 +22,12 @@ android {
 
     defaultConfig {
         applicationId = "com.indian.iptv"
-        // Android 9 (API 28) is the floor so the same APK also installs on phones/tablets:
-        // the codebase has no API-29+ calls (no Build.VERSION guards needed anywhere).
-        minSdk = 28
+        // TV app baseline: Android TV 10+ (API 29). Phone users install the
+        // separate :mobileapp module (com.indian.iptv.mobile).
+        minSdk = 29
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
 
         buildConfigField("String", "TMDB_BEARER_TOKEN", "\"$tmdbBearerToken\"")
     }
